@@ -22,6 +22,7 @@ class AdvancedDashboard {
         this.candleController = null;
         this.analysisController = null;
         this.localCacheTtl = 8000;
+        this.analysisTimeoutMs = 12000;
         this.candleMemoryCache = new Map();
         this.analysisMemoryCache = new Map();
         this.init();
@@ -193,7 +194,11 @@ class AdvancedDashboard {
     async loadAnalysisInBackground(candles, seq) {
         this.setOperationalState({ state: 'loading', message: 'Analisando IA...' });
         try {
-            const analysis = await this.fetchAnalysis(this.currentAsset, this.currentTimeframe, this.analysisController.signal);
+            const analysis = await this.withTimeout(
+                this.fetchAnalysis(this.currentAsset, this.currentTimeframe, this.analysisController.signal),
+                this.analysisTimeoutMs,
+                'Tempo limite da IA atingido'
+            );
             if (seq !== this.requestSeq) return;
             const payload = analysis?.success ? analysis : this.createNeutralAnalysis(candles);
             this.updateChart(candles, payload, false);
@@ -205,6 +210,14 @@ class AdvancedDashboard {
                 this.updateAnalysisPanel(this.createNeutralAnalysis(candles), candles);
             }
         }
+    }
+
+    withTimeout(promise, timeoutMs, message) {
+        let timeoutId;
+        const timeout = new Promise((_, reject) => {
+            timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs);
+        });
+        return Promise.race([promise, timeout]).finally(() => clearTimeout(timeoutId));
     }
 
     async fetchCandles(symbol, timeframe, limit, signal) {

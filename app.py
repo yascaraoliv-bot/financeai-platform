@@ -47,6 +47,7 @@ candle_cache = TimedCache(ttl_seconds=12)
 ticker_cache = TimedCache(ttl_seconds=8)
 chart_payload_cache = TimedCache(ttl_seconds=8)
 analysis_response_cache = TimedCache(ttl_seconds=10)
+analysis_core_cache = TimedCache(ttl_seconds=10)
 
 SUPPORTED_TIMEFRAMES = ["1m", "5m", "15m", "1h", "4h", "1d", "1w"]
 HEATMAP_TIMEFRAMES = ["5m", "15m", "1h", "4h", "1d"]
@@ -249,6 +250,14 @@ def get_cached_chart_payload(symbol, timeframe, limit):
 
 
 def build_analysis(symbol, timeframe, limit=500):
+    symbol = normalize_symbol(symbol)
+    timeframe = normalize_timeframe(timeframe)
+    limit = max(60, min(int(limit or 500), 1000))
+    cache_key = f"analysis-core:{symbol}:{timeframe}:{limit}"
+    cached = analysis_core_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     df = load_market_data(symbol, timeframe, limit)
     ta = TechnicalAnalysis(df)
     try:
@@ -297,7 +306,8 @@ def build_analysis(symbol, timeframe, limit=500):
         validation["entry_quality"]["probability"] = min(validation["entry_quality"]["probability"], 42)
     elif smc.get("confirmed"):
         validation["entry_quality"]["probability"] = min(95, validation["entry_quality"]["probability"] + 8)
-    return df, ta, signal, levels, patterns, score, smc, validation, volume_analysis, wyckoff
+    result = (df, ta, signal, levels, patterns, score, smc, validation, volume_analysis, wyckoff)
+    return analysis_core_cache.set(cache_key, result)
 
 
 def direction_from_signal(signal_type, technical_signal=None):
