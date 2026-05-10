@@ -22,6 +22,7 @@ from ia.live_trading import build_live_status
 from ia.live_signals import LiveSignalManager
 from ia.market_data_router import MarketDataRouter
 from ia.operational_signal import build_operational_signal
+from ia.operacional_live_engine import build_operacional_live_status
 from ia.operacional_reader import build_candle_flow, build_operacional_context, build_operacional_reading
 from ia.operacional_replay import OperacionalReplayEngine
 from ia.replay_engine import ReplayEngine
@@ -61,6 +62,7 @@ live_status_cache = TimedCache(ttl_seconds=3)
 live_signal_manager = LiveSignalManager()
 replay_engine = ReplayEngine()
 operacional_replay_engine = OperacionalReplayEngine()
+operacional_live_signals = []
 
 SUPPORTED_TIMEFRAMES = ["1m", "5m", "15m", "1h", "4h", "1d", "1w"]
 HEATMAP_TIMEFRAMES = ["5m", "15m", "1h", "4h", "1d"]
@@ -331,6 +333,146 @@ def build_advanced_confluence(score, technical, smc, volume, mtf_confluence, wyc
             f"Confluencia avancada {advanced_score}/100 com Wyckoff {wyckoff.get('wyckoff_phase', '--')}, "
             f"Elliott {elliott_wave.get('current_wave', '--')} e fluxo {tape_reading.get('order_flow_bias', '--')}."
         ),
+    }
+
+
+def build_signal_cards_decision(signal, final_score, confluence_ai, operational_signal, operational_state,
+                                advanced_confluence, smc, volume, mtf_confluence, wyckoff,
+                                elliott_wave, tape_reading, levels):
+    def upper(value):
+        return str(value or "").upper()
+
+    def as_number(value, default=0):
+        try:
+            return float(value)
+        except Exception:
+            return default
+
+    score = as_number(advanced_confluence.get("score"), as_number(operational_signal.get("score"), 0))
+    confidence = max(
+        score,
+        as_number(operational_signal.get("confidence"), 0),
+        as_number(confluence_ai.get("confidence"), 0),
+        as_number(final_score.get("confidence"), 0),
+        as_number(signal.get("confidence"), 0),
+    )
+    rr = as_number(operational_signal.get("risk_reward"), as_number(levels.get("risco_retorno"), 0))
+    raw_signals = [
+        operational_signal.get("signal"),
+        confluence_ai.get("signal"),
+        final_score.get("signal"),
+        signal.get("signal_type"),
+        mtf_confluence.get("dominant_direction"),
+        smc.get("institutional_bias"),
+        volume.get("signal"),
+        tape_reading.get("order_flow_bias"),
+        wyckoff.get("bias"),
+        elliott_wave.get("wave_bias"),
+    ]
+
+    bullish = 0
+    bearish = 0
+    waiting = 0
+    reasons = []
+
+    for item in map(upper, raw_signals):
+        if item in ["BUY", "COMPRA", "BULLISH", "BULLISH_VOLUME", "BUY_FLOW"]:
+            bullish += 2
+        if item in ["SELL", "VENDA", "BEARISH", "BEARISH_VOLUME", "SELL_FLOW"]:
+            bearish += 2
+        if "AGUARDAR" in item or "WAIT" in item:
+            waiting += 2
+
+    if smc.get("confirmed"):
+        if upper(smc.get("institutional_bias")) == "BULLISH":
+            bullish += 2
+            reasons.append("SMC confirma vies comprador.")
+        elif upper(smc.get("institutional_bias")) == "BEARISH":
+            bearish += 2
+            reasons.append("SMC confirma vies vendedor.")
+    if smc.get("has_bos") and smc.get("structure", {}).get("trend") == "bullish":
+        bullish += 1
+    if smc.get("has_bos") and smc.get("structure", {}).get("trend") == "bearish":
+        bearish += 1
+    if mtf_confluence.get("dominant_direction") == "BULLISH":
+        bullish += 2 if mtf_confluence.get("confirmed_timeframes", 0) >= 3 else 1
+    if mtf_confluence.get("dominant_direction") == "BEARISH":
+        bearish += 2 if mtf_confluence.get("confirmed_timeframes", 0) >= 3 else 1
+    if wyckoff.get("wyckoff_phase") == "acumulacao" or wyckoff.get("spring"):
+        bullish += 1
+    if wyckoff.get("wyckoff_phase") == "distribuicao" or wyckoff.get("upthrust"):
+        bearish += 1
+    if elliott_wave.get("impulse_structure", {}).get("detected") and elliott_wave.get("wave_bias") == "bullish":
+        bullish += 1
+    if elliott_wave.get("impulse_structure", {}).get("detected") and elliott_wave.get("wave_bias") == "bearish":
+        bearish += 1
+    if tape_reading.get("absorption", {}).get("detected"):
+        waiting += 1
+        reasons.append("Absorcao no fluxo pede confirmacao.")
+
+    invalidated = (
+        operational_state.get("state") == "invalidated"
+        or smc.get("invalidated")
+        or smc.get("false_breakout", {}).get("detected")
+        or (rr > 0 and rr < 1)
+    )
+    weak_or_wait = (
+        operational_state.get("state") in ["loading", "waiting_confirmation"]
+        or volume.get("signal") == "NEUTRAL_VOLUME"
+        or tape_reading.get("order_flow_bias") == "BALANCED_FLOW"
+        or waiting > 0
+    )
+    conflict = bullish > 0 and bearish > 0 and abs(bullish - bearish) <= 2
+    dominant_key = "buy" if bullish > bearish else "sell" if bearish > bullish else "neutral"
+    dominant_votes = max(bullish, bearish)
+
+    if invalidated:
+        active = "wait"
+        reason = "Cenario exige aguardar por invalidacao, falso rompimento ou risco/retorno ruim."
+    elif score < 32 and dominant_votes < 4:
+        active = "neutral"
+        reason = "Sem vies dominante e score baixo."
+    elif conflict:
+        active = "wait"
+        reason = "Conflito entre leituras compradoras e vendedoras."
+    elif weak_or_wait and score < 68:
+        active = "wait"
+        reason = "Confluencia ainda sem confirmacao suficiente."
+    elif dominant_key in ["buy", "sell"] and dominant_votes >= 4 and score >= 48:
+        active = dominant_key
+        reason = "Vies dominante alinhado com confluencia da IA Completa."
+    elif score >= 40:
+        active = "wait"
+        reason = "Aguardar confirmacao para liberar direcao."
+    else:
+        active = "neutral"
+        reason = "Mercado sem direcao clara."
+
+    intensity = "forte" if confidence >= 76 else "moderada" if confidence >= 55 else "baixa"
+    labels = {
+        "buy": "COMPRA",
+        "sell": "VENDA",
+        "neutral": "NEUTRO",
+        "wait": "AGUARDAR CONFIRMACAO",
+    }
+    cards = {}
+    for key, label in labels.items():
+        cards[key] = {
+            "label": label,
+            "active": key == active,
+            "confidence": round(confidence, 1) if key == active else 0,
+            "score": round(score, 1) if key == active else 0,
+            "intensity": intensity if key == active else "inativa",
+        }
+    return {
+        "active": active,
+        "label": labels[active],
+        "confidence": round(confidence, 1),
+        "score": round(score, 1),
+        "intensity": intensity,
+        "votes": {"bullish": bullish, "bearish": bearish, "waiting": waiting},
+        "reason": reason if not reasons else f"{reason} {reasons[0]}",
+        "cards": cards,
     }
 
 
@@ -696,6 +838,12 @@ def operacional():
     return render_template("operacional.html")
 
 
+@app.route("/operacional-live")
+@login_required
+def operacional_live():
+    return render_template("operacional_live.html")
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
@@ -898,6 +1046,21 @@ def get_analysis(symbol, timeframe):
             tape_reading=tape_reading,
             levels=levels,
         )
+        signal_cards = build_signal_cards_decision(
+            signal=signal,
+            final_score=final_score,
+            confluence_ai=confluence_ai,
+            operational_signal=operational_signal,
+            operational_state=operational_state,
+            advanced_confluence=advanced_confluence,
+            smc=smc,
+            volume=volume_analysis,
+            mtf_confluence=mtf_confluence,
+            wyckoff=wyckoff,
+            elliott_wave=elliott_wave,
+            tape_reading=tape_reading,
+            levels=levels,
+        )
 
         response = {
             "success": True,
@@ -920,6 +1083,7 @@ def get_analysis(symbol, timeframe):
             "elliott_wave": elliott_wave,
             "tape_reading": tape_reading,
             "advanced_confluence": advanced_confluence,
+            "signal_cards": signal_cards,
             "institutional_context": institutional_payload,
             "smc_score": institutional_payload["smc_score"],
             "wyckoff_phase": institutional_payload["wyckoff_phase"],
@@ -992,6 +1156,16 @@ def get_analysis(symbol, timeframe):
                 tape_reading=default_tape_reading(),
                 levels={},
             ),
+            "signal_cards": {
+                "active": "wait",
+                "label": "AGUARDAR CONFIRMACAO",
+                "confidence": 35,
+                "score": 0,
+                "intensity": "carregando",
+                "votes": {"bullish": 0, "bearish": 0, "waiting": 1},
+                "reason": "IA completa indisponivel; aguardando nova analise.",
+                "cards": {},
+            },
             "institutional_context": institutional_payload,
             "smc_score": institutional_payload["smc_score"],
             "wyckoff_phase": institutional_payload["wyckoff_phase"],
@@ -1471,6 +1645,76 @@ def api_operacional_signals(symbol, timeframe):
         }))
     except Exception as error:
         return jsonify({"success": False, "symbol": symbol, "timeframe": timeframe, "error": str(error), "signal": {"status": "analisando", "direction": "NEUTRO"}}), 200
+
+
+def register_operacional_live_signal(status):
+    signal = status.get("signal") or {}
+    if signal.get("direction") not in ["COMPRA", "VENDA"]:
+        return None
+    signature = f"{signal.get('symbol')}:{signal.get('timeframe')}:{signal.get('direction')}:{signal.get('entry')}:{signal.get('stop_loss')}"
+    if operacional_live_signals and operacional_live_signals[-1].get("signature") == signature:
+        return operacional_live_signals[-1]
+    item = dict(signal)
+    item["signature"] = signature
+    item["engine"] = "live_operacional_grafico"
+    operacional_live_signals.append(item)
+    del operacional_live_signals[:-80]
+    return item
+
+
+@app.route("/api/operacional-live/status/<symbol>/<timeframe>")
+@login_required
+def api_operacional_live_status(symbol, timeframe):
+    symbol = normalize_symbol(symbol)
+    timeframe = normalize_timeframe(timeframe)
+    try:
+        limit = int(request.args.get("limit", 240))
+        df = load_market_data(symbol, timeframe, limit)
+        status = build_operacional_live_status(df, symbol, timeframe)
+        meta = market.last_meta(symbol)
+        status.update({
+            "source": meta.get("source"),
+            "market": meta.get("market"),
+            "market_label": meta.get("market_label"),
+            "market_status_raw": meta.get("market_status"),
+            "market_message": meta.get("message"),
+            "streaming": meta.get("streaming", False),
+        })
+        current_signal = register_operacional_live_signal(status)
+        status["signal_event"] = current_signal
+        return jsonify(sanitize_json(status))
+    except Exception as error:
+        return jsonify({
+            "success": False,
+            "module": "live_operacional_grafico",
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "error": str(error),
+            "status": "AGUARDAR CONFIRMACAO",
+            "direction": "NEUTRO",
+            "messages": ["Sem contexto operacional suficiente no momento."],
+            "signals": [],
+        }), 200
+
+
+@app.route("/api/operacional-live/signals/<symbol>/<timeframe>")
+@login_required
+def api_operacional_live_signals(symbol, timeframe):
+    symbol = normalize_symbol(symbol)
+    timeframe = normalize_timeframe(timeframe)
+    items = [
+        item for item in operacional_live_signals
+        if item.get("symbol") == symbol and item.get("timeframe") == timeframe
+    ]
+    return jsonify(sanitize_json({
+        "success": True,
+        "module": "live_operacional_grafico",
+        "symbol": symbol,
+        "timeframe": timeframe,
+        "signals": items[-40:],
+        "count": len(items),
+        "disclaimer": "Sinais operacionais graficos educativos. Nao constituem recomendacao financeira.",
+    }))
 
 
 @app.route("/api/operacional/context/<symbol>/<timeframe>")

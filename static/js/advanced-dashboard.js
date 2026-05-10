@@ -361,9 +361,17 @@ class AdvancedDashboard {
             advanced_confluence: {},
             institutional_context: {},
             volume_analysis: {},
+            signal_cards: {
+                active: 'wait',
+                label: 'AGUARDAR CONFIRMACAO',
+                confidence: 35,
+                score: 0,
+                intensity: 'carregando',
+                reason: 'Aguardando analise da IA Completa.',
+            },
             operational_state: {
-                state: 'neutral',
-                message: 'Cenario neutro / sem entrada no momento.',
+                state: 'loading',
+                message: 'Analisando IA...',
                 ready: false,
             },
         };
@@ -585,6 +593,18 @@ class AdvancedDashboard {
     }
 
     deriveFinalSignalDecision(analysis, signal, fallbackScore) {
+        const cardsDecision = analysis.signal_cards || {};
+        if (cardsDecision.active && cardsDecision.label) {
+            return {
+                key: cardsDecision.active,
+                label: cardsDecision.label,
+                confidence: Number(cardsDecision.confidence ?? cardsDecision.score ?? fallbackScore ?? 0),
+                score: Number(cardsDecision.score ?? fallbackScore ?? 0),
+                intensity: cardsDecision.intensity || 'moderada',
+                reason: cardsDecision.reason || '',
+            };
+        }
+
         const operationalSignal = analysis.operational_signal || {};
         const finalScore = analysis.final_score || {};
         const confluenceAI = analysis.confluence_ai || {};
@@ -675,9 +695,13 @@ class AdvancedDashboard {
     setSignalVisualState(decision) {
         const key = decision?.key || 'neutral';
         const displaySignal = decision?.label || 'NEUTRO';
-        const scoreLabel = Number.isFinite(Number(decision?.confidence))
+        const confidenceText = Number.isFinite(Number(decision?.confidence))
             ? `${Math.round(Number(decision.confidence))}%`
             : 'ATIVO';
+        const scoreText = Number.isFinite(Number(decision?.score))
+            ? `S${Math.round(Number(decision.score))}`
+            : '';
+        const scoreLabel = scoreText ? `${confidenceText} · ${scoreText}` : confidenceText;
 
         const mainSignal = document.getElementById('mainSignal');
         if (mainSignal) {
@@ -699,6 +723,7 @@ class AdvancedDashboard {
             card.classList.toggle('active', item.key === key);
             card.dataset.active = item.key === key ? 'true' : 'false';
             card.dataset.intensity = item.key === key ? (decision?.intensity || 'moderada') : '';
+            card.title = item.key === key ? (decision?.reason || '') : '';
         });
     }
 

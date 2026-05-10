@@ -709,6 +709,55 @@
     color: var(--accent-red);
 }
 
+.operacional-live-shell {
+    background:
+        radial-gradient(circle at 14% 0%, rgba(212, 175, 55, 0.10), transparent 26%),
+        radial-gradient(circle at 84% 12%, rgba(56, 189, 248, 0.08), transparent 28%),
+        #05070d;
+}
+
+.operacional-live-toolbar,
+.operacional-live-chart-panel,
+.operacional-live-panel > .analysis-card,
+.operacional-live-panel > .live-status-card {
+    border-color: rgba(212, 175, 55, 0.24);
+    box-shadow: 0 22px 76px rgba(0, 0, 0, 0.38), 0 0 34px rgba(212, 175, 55, 0.07);
+}
+
+.operacional-live-chart-panel .chart-header-pro h3 {
+    color: #f8e7ad;
+}
+
+.operacional-live-panel .live-status-card {
+    border-left-color: #d4af37;
+}
+
+.operacional-live-panel .live-status-card strong {
+    color: #f8e7ad;
+}
+
+.operacional-live-panel .live-status-card[data-state="COMPRA"] {
+    border-left-color: var(--accent-green);
+}
+
+.operacional-live-panel .live-status-card[data-state="COMPRA"] strong {
+    color: var(--accent-green);
+}
+
+.operacional-live-panel .live-status-card[data-state="VENDA"],
+.operacional-live-panel .live-status-card[data-state="NAO_OPERAR"] {
+    border-left-color: var(--accent-red);
+}
+
+.operacional-live-panel .live-status-card[data-state="VENDA"] strong,
+.operacional-live-panel .live-status-card[data-state="NAO_OPERAR"] strong {
+    color: var(--accent-red);
+}
+
+.operacional-live-panel .live-status-card[data-state="AGUARDAR"] {
+    border-left-color: var(--accent-yellow);
+}
+
 .live-status-card[data-state="SIDEWAYS"],
 .live-status-card[data-state="WEAK_VOLUME"],
 .live-status-card[data-state="WAIT_NEXT_CANDLE"] {
@@ -1519,8 +1568,9 @@
     display: block;
     margin-top: 10px;
     color: var(--text-primary);
-    font-size: 22px;
+    font-size: clamp(16px, 1.7vw, 22px);
     line-height: 1;
+    white-space: nowrap;
 }
 
 .signal-buy {
