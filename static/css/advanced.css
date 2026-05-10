@@ -2031,3 +2031,383 @@
         grid-template-columns: 1fr;
     }
 }
+
+/* =========================================================
+   FINANCEAI BLACK/GOLD PROP DESK OVERRIDE
+   ========================================================= */
+:root {
+    --desk-black: #050505;
+    --desk-ink: #080A0F;
+    --desk-panel: rgba(24, 24, 27, 0.88);
+    --desk-panel-soft: rgba(39, 39, 42, 0.72);
+    --desk-border: rgba(255, 255, 255, 0.08);
+    --desk-border-gold: rgba(212, 175, 55, 0.28);
+    --desk-gold: #D4AF37;
+    --desk-gold-soft: #F5C542;
+    --desk-ai: #38BDF8;
+    --desk-text: #F8FAFC;
+    --desk-muted: #A1A1AA;
+    --desk-green: #22C55E;
+    --desk-red: #EF4444;
+    --desk-shadow: 0 28px 90px rgba(0, 0, 0, 0.58);
+}
+
+.advanced-dashboard,
+.live-shell,
+.replay-shell {
+    color: var(--desk-text);
+}
+
+.advanced-dashboard::before,
+.live-shell::before,
+.replay-shell::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: -1;
+    background:
+        radial-gradient(circle at 16% 0%, rgba(212, 175, 55, 0.11), transparent 30%),
+        radial-gradient(circle at 92% 10%, rgba(56, 189, 248, 0.10), transparent 28%),
+        linear-gradient(135deg, rgba(255,255,255,0.025) 0 1px, transparent 1px 22px);
+    opacity: 0.85;
+}
+
+.analysis-card,
+.chart-section-pro,
+.live-toolbar,
+.live-chart-panel,
+.live-ia-panel > .analysis-card,
+.live-status-card,
+.replay-main-panel,
+.replay-controls-panel,
+.replay-ia-panel,
+.replay-results-panel,
+.replay-signals-panel,
+.live-levels-card,
+.live-message-feed,
+.live-invalidations,
+.detailed-analysis,
+.timeframe-analysis,
+.backtest-section,
+.volume-analysis-section,
+.market-structure-section,
+.smart-money-section,
+.smc-wyckoff-section,
+.signal-card,
+.score-card,
+.indicators-card,
+.levels-card,
+.news-card,
+.voice-card,
+.live-signals-panel,
+.signals-drawer {
+    background:
+        linear-gradient(145deg, rgba(24, 24, 27, 0.92), rgba(8, 10, 15, 0.88)),
+        radial-gradient(circle at top left, rgba(212, 175, 55, 0.08), transparent 42%);
+    border: 1px solid var(--desk-border);
+    border-top-color: rgba(212, 175, 55, 0.20);
+    border-radius: 18px;
+    box-shadow: var(--desk-shadow);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+}
+
+.analysis-card:hover,
+.chart-section-pro:hover,
+.live-chart-panel:hover,
+.live-ia-panel > .analysis-card:hover,
+.replay-main-panel:hover,
+.replay-controls-panel:hover,
+.replay-ia-panel:hover,
+.replay-results-panel:hover,
+.replay-signals-panel:hover,
+.signal-card:hover,
+.score-card:hover {
+    border-color: rgba(212, 175, 55, 0.32);
+    box-shadow: 0 32px 100px rgba(0, 0, 0, 0.66), 0 0 28px rgba(212, 175, 55, 0.08);
+    transform: translateY(-1px);
+}
+
+.section-header h2,
+.card-title,
+.card-header-detailed h3,
+.chart-header-pro h3,
+.live-page-title h1,
+.replay-page-title h1,
+.live-signal-title,
+.voice-card h3,
+.replay-section-title,
+.drawer-header h3 {
+    color: var(--desk-text);
+    letter-spacing: 0.04em;
+}
+
+.section-header h2::after,
+.card-title::after,
+.card-header-detailed h3::after,
+.chart-header-pro h3::after,
+.live-page-title h1::after,
+.replay-page-title h1::after,
+.drawer-header h3::after {
+    content: "";
+    display: block;
+    width: 44px;
+    height: 2px;
+    margin-top: 8px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--desk-gold), var(--desk-ai));
+    box-shadow: 0 0 18px rgba(212, 175, 55, 0.24);
+}
+
+.form-control-premium,
+.tf-btn,
+.chart-tool-btn,
+.chart-tool-link,
+.btn-run-backtest,
+.live-signals-open,
+.voice-toggle,
+.voice-test,
+.replay-control-btn,
+.replay-step-btn,
+.signal-filter-btn,
+.drawer-close {
+    background: linear-gradient(145deg, rgba(24, 24, 27, 0.94), rgba(5, 5, 5, 0.88));
+    border: 1px solid rgba(255,255,255,0.09);
+    color: var(--desk-text);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 14px 34px rgba(0,0,0,0.28);
+}
+
+.tf-btn.active,
+.form-control-premium:focus,
+.form-control-premium:hover,
+.chart-tool-btn:hover,
+.chart-tool-link:hover,
+.btn-run-backtest:hover,
+.live-signals-open:hover,
+.voice-toggle:hover,
+.voice-test:hover,
+.replay-control-btn:hover,
+.replay-step-btn:hover,
+.signal-filter-btn:hover,
+.signal-filter-btn.active,
+.drawer-close:hover {
+    border-color: var(--desk-border-gold);
+    color: var(--desk-gold-soft);
+    box-shadow: 0 0 0 1px rgba(212, 175, 55, 0.10), 0 18px 45px rgba(0,0,0,0.42), 0 0 26px rgba(212, 175, 55, 0.10);
+}
+
+.btn-run-backtest,
+.chart-tool-link,
+.replay-control-btn.primary,
+.voice-toggle.active {
+    background: linear-gradient(135deg, rgba(212, 175, 55, 0.24), rgba(56, 189, 248, 0.12), rgba(5, 5, 5, 0.86));
+    border-color: rgba(212, 175, 55, 0.34);
+    color: var(--desk-text);
+}
+
+.badge-ai,
+.market-status-badge,
+.live-status-pill,
+.replay-badge,
+.signal-status-badge,
+.source-badge,
+.score-badge {
+    background: linear-gradient(135deg, rgba(212, 175, 55, 0.18), rgba(24, 24, 27, 0.82));
+    border: 1px solid rgba(212, 175, 55, 0.30);
+    color: var(--desk-gold-soft);
+    box-shadow: 0 0 18px rgba(212, 175, 55, 0.10);
+}
+
+.live-page-subtitle,
+.replay-page-subtitle,
+.info-item .label,
+.live-market-strip span,
+.live-metrics-grid span,
+.validation-stack span,
+.smc-grid span,
+.level-name,
+.ind-name,
+.voice-status,
+.voice-last-message,
+.replay-meta,
+.signal-meta,
+.drawer-empty {
+    color: var(--desk-muted);
+}
+
+.info-item .value,
+.level-price,
+.ind-value,
+.live-market-strip strong,
+.live-metrics-grid strong,
+.replay-metric strong,
+.voice-last-message strong {
+    color: var(--desk-gold-soft);
+    text-shadow: 0 0 16px rgba(212, 175, 55, 0.16);
+}
+
+.score-circle,
+.score-ring,
+.confluence-score-circle {
+    background:
+        radial-gradient(circle at center, rgba(24, 24, 27, 0.96) 0 58%, transparent 59%),
+        conic-gradient(from 210deg, var(--desk-gold), var(--desk-ai), rgba(255,255,255,0.08));
+    border: 1px solid rgba(212, 175, 55, 0.18);
+    box-shadow: inset 0 0 30px rgba(0,0,0,0.38), 0 0 30px rgba(212, 175, 55, 0.12);
+    filter: none;
+}
+
+.score-number,
+.confluence-score-value {
+    color: var(--desk-text);
+    text-shadow: 0 0 22px rgba(212, 175, 55, 0.24);
+}
+
+.trading-chart,
+.live-chart,
+.replay-chart,
+.equity-curve,
+#chart-container,
+#live-chart,
+#replay-chart {
+    background:
+        linear-gradient(180deg, rgba(5, 5, 5, 0.98), rgba(13, 17, 23, 0.94)),
+        radial-gradient(circle at 30% 0%, rgba(212, 175, 55, 0.08), transparent 42%);
+    border: 1px solid rgba(212, 175, 55, 0.16);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.03), 0 28px 80px rgba(0,0,0,0.42);
+}
+
+.live-status-card {
+    position: relative;
+    overflow: hidden;
+}
+
+.live-status-card::before,
+.live-message-row::before,
+.live-signal-card::before,
+.signal-card::before {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 3px;
+    background: linear-gradient(180deg, var(--desk-gold), var(--desk-ai));
+    opacity: 0.85;
+}
+
+.live-status-card strong,
+.signal-type,
+.live-signal-direction {
+    text-shadow: 0 0 18px currentColor;
+}
+
+.live-status-card[data-state="BUY_CONFIRMED"] strong,
+.live-status-card[data-state="AGGRESSIVE_ENTRY"] strong,
+.live-status-card[data-state="CONSERVATIVE_ENTRY"] strong,
+.signal-buy,
+.live-signal-card.buy .live-signal-direction {
+    color: var(--desk-green);
+}
+
+.live-status-card[data-state="SELL_CONFIRMED"] strong,
+.live-status-card[data-state="INVALIDATED"] strong,
+.live-status-card[data-state="HIGH_RISK"] strong,
+.signal-sell,
+.live-signal-card.sell .live-signal-direction {
+    color: var(--desk-red);
+}
+
+.signal-wait,
+.live-status-card[data-state="WAITING_CONFIRMATION"] strong,
+.live-status-card[data-state="WAIT_NEXT_CANDLE"] strong,
+.live-status-card[data-state="SIDEWAYS"] strong,
+.live-status-card[data-state="WEAK_VOLUME"] strong {
+    color: var(--desk-gold-soft);
+}
+
+.live-message-row,
+.live-invalidation-row,
+.reasoning-item,
+.smc-item,
+.validation-item,
+.level-item,
+.ind-item,
+.replay-signal-row,
+.live-signal-card {
+    position: relative;
+    background: linear-gradient(145deg, rgba(39, 39, 42, 0.68), rgba(8, 10, 15, 0.80));
+    border: 1px solid rgba(255,255,255,0.075);
+    border-radius: 14px;
+    box-shadow: 0 16px 42px rgba(0,0,0,0.30);
+}
+
+.live-message-row:hover,
+.live-invalidation-row:hover,
+.reasoning-item:hover,
+.smc-item:hover,
+.validation-item:hover,
+.level-item:hover,
+.ind-item:hover,
+.replay-signal-row:hover,
+.live-signal-card:hover {
+    border-color: rgba(212, 175, 55, 0.26);
+    transform: translateY(-1px);
+}
+
+.risk-disclaimer,
+.voice-disclaimer,
+.replay-disclaimer,
+.educational-warning {
+    border: 1px solid rgba(212, 175, 55, 0.30);
+    background: linear-gradient(90deg, rgba(212, 175, 55, 0.12), rgba(56, 189, 248, 0.04), rgba(5,5,5,0.72));
+    color: var(--desk-gold-soft);
+    box-shadow: 0 14px 40px rgba(0,0,0,0.28);
+}
+
+.toast-notification,
+.alert-visual,
+.signal-toast {
+    background: rgba(24, 24, 27, 0.92);
+    border: 1px solid rgba(212, 175, 55, 0.24);
+    color: var(--desk-text);
+    box-shadow: 0 26px 80px rgba(0,0,0,0.58), 0 0 24px rgba(212, 175, 55, 0.10);
+}
+
+.live-activity-dot,
+.market-status-dot,
+.voice-status-dot,
+.replay-live-dot {
+    background: var(--desk-ai);
+    box-shadow: 0 0 18px rgba(56, 189, 248, 0.58);
+}
+
+.live-activity-dot.buy,
+.market-status-dot.open,
+.signal-status-badge.active,
+.signal-status-badge.confirmed {
+    background: var(--desk-green);
+    box-shadow: 0 0 18px rgba(34, 197, 94, 0.44);
+}
+
+.live-activity-dot.wait,
+.market-status-dot.closed,
+.signal-status-badge.waiting_confirmation {
+    background: var(--desk-gold-soft);
+    box-shadow: 0 0 18px rgba(245, 197, 66, 0.40);
+}
+
+.signal-status-badge.invalidated,
+.signal-status-badge.stopped,
+.market-status-dot.error {
+    background: var(--desk-red);
+    box-shadow: 0 0 18px rgba(239, 68, 68, 0.42);
+}
+
+input[type="range"] {
+    accent-color: var(--desk-gold);
+}
+
+select option {
+    background: #080A0F;
+    color: var(--desk-text);
+}

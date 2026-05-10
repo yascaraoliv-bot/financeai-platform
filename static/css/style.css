@@ -1043,6 +1043,217 @@ html, body {
     }
 }
 
+/* ========================================
+   FINANCEAI BLACK/GOLD INSTITUTIONAL THEME
+   ======================================== */
+
+body {
+    background:
+        radial-gradient(900px 520px at 14% -8%, rgba(212, 175, 55, 0.10), transparent 62%),
+        radial-gradient(780px 520px at 88% 4%, rgba(56, 189, 248, 0.10), transparent 58%),
+        linear-gradient(135deg, #050505 0%, #080A0F 46%, #0D1117 100%);
+}
+
+.dashboard-container {
+    background:
+        linear-gradient(rgba(255,255,255,0.018) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.014) 1px, transparent 1px);
+    background-size: 42px 42px;
+}
+
+.sidebar {
+    background:
+        radial-gradient(420px 240px at 50% -10%, rgba(212, 175, 55, 0.12), transparent 68%),
+        linear-gradient(180deg, rgba(13, 17, 23, 0.96), rgba(5, 5, 5, 0.96));
+    border-right: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.sidebar-header {
+    padding: 26px 20px 18px;
+}
+
+.sidebar-header h2 {
+    color: #F8FAFC;
+    font-size: 21px;
+    letter-spacing: 0.01em;
+}
+
+.sidebar-header h2 i {
+    color: #D4AF37;
+    filter: drop-shadow(0 0 13px rgba(212, 175, 55, 0.42));
+}
+
+.sidebar-kicker {
+    display: block;
+    margin-top: 7px;
+    color: #A1A1AA;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.nav-item {
+    margin: 2px 12px 2px 0;
+    border-radius: 0 14px 14px 0;
+}
+
+.nav-item i {
+    color: #D4AF37;
+}
+
+.nav-item:hover,
+.nav-item.active {
+    background: linear-gradient(90deg, rgba(212, 175, 55, 0.14), rgba(56, 189, 248, 0.06));
+    color: #F8FAFC;
+    border-left-color: #D4AF37;
+}
+
+.nav-item.active {
+    box-shadow: inset 0 0 26px rgba(212, 175, 55, 0.08), 0 0 22px rgba(56, 189, 248, 0.06);
+}
+
+.top-bar {
+    height: 74px;
+    background: rgba(8, 10, 15, 0.72);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 18px 60px rgba(0, 0, 0, 0.30);
+}
+
+.page-title {
+    color: #F8FAFC;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+}
+
+.terminal-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 38px;
+    padding: 0 12px;
+    border: 1px solid rgba(212, 175, 55, 0.24);
+    border-radius: 999px;
+    color: #F5C542;
+    background: rgba(24, 24, 27, 0.72);
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.terminal-status span {
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    background: #22C55E;
+    box-shadow: 0 0 14px rgba(34, 197, 94, 0.72);
+}
+
+.page-content {
+    background:
+        radial-gradient(1000px 620px at 10% 0%, rgba(212, 175, 55, 0.08), transparent 60%),
+        radial-gradient(860px 560px at 90% 4%, rgba(56, 189, 248, 0.08), transparent 58%),
+        linear-gradient(135deg, #050505 0%, #080A0F 42%, #0D1117 100%);
+}
+
+.controls-section,
+.market-card,
+.chart-container,
+.signals-panel,
+.strategies-panel,
+.alerts-panel,
+.portfolio-card,
+.settings-card,
+.performance-card,
+.analytics-card {
+    background: linear-gradient(180deg, rgba(24, 24, 27, 0.88), rgba(13, 17, 23, 0.76)) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-radius: 18px !important;
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    backdrop-filter: blur(18px);
+}
+
+.market-card:hover,
+.chart-container:hover,
+.signals-panel:hover,
+.strategies-panel:hover,
+.alerts-panel:hover {
+    border-color: rgba(212, 175, 55, 0.34) !important;
+    box-shadow: 0 28px 90px rgba(0, 0, 0, 0.48), 0 0 26px rgba(212, 175, 55, 0.10);
+}
+
+.form-select,
+.btn-timeframe,
+.btn-icon-small,
+.btn,
+.search-box {
+    background: rgba(24, 24, 27, 0.74) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-radius: 12px !important;
+}
+
+.btn-action,
+.btn-small {
+    background: linear-gradient(135deg, rgba(212, 175, 55, 0.95), rgba(245, 197, 66, 0.76)) !important;
+    color: #050505 !important;
+    font-weight: 800;
+    box-shadow: 0 0 20px rgba(212, 175, 55, 0.18);
+}
+
+.btn-timeframe:hover,
+.btn-icon-small:hover,
+.btn-icon-small.active,
+.btn-check:checked + .btn-timeframe {
+    border-color: rgba(212, 175, 55, 0.42) !important;
+    color: #F5C542 !important;
+    background: rgba(212, 175, 55, 0.12) !important;
+}
+
+.card-price,
+.panel-header h3,
+.chart-header h3,
+.card-title {
+    color: #F8FAFC;
+}
+
+.card-price {
+    color: #F5C542;
+    text-shadow: 0 0 18px rgba(212, 175, 55, 0.22);
+}
+
+.badge-positive,
+.badge-negative,
+.badge-info,
+.badge-success,
+.signal-indicator {
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 999px;
+}
+
+.signal-item {
+    background: rgba(39, 39, 42, 0.58) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+}
+
+.signal-buy {
+    border-left-color: #22C55E !important;
+}
+
+.signal-sell {
+    border-left-color: #EF4444 !important;
+}
+
+.signal-hold {
+    border-left-color: #F5C542 !important;
+}
+
+@media (max-width: 768px) {
+    .terminal-status {
+        display: none;
+    }
+}
+
 @media (max-width: 600px) {
     --sidebar-width: 200px;
     
