@@ -87,6 +87,7 @@ class LiveTradingIA:
             "stop_loss": levels.get("stop_loss"),
             "take_profit": levels.get("take_profit_1"),
             "take_profit_2": levels.get("take_profit_2"),
+            "take_profit_3": levels.get("take_profit_3"),
             "reason": self._reason(technical, volume, smc, confirmations, invalidations),
             "confirmations": confirmations[:10],
             "invalidations": invalidations[:10],
@@ -144,8 +145,15 @@ class LiveTradingIA:
             "stop_loss": raw.get("stop_loss"),
             "take_profit_1": raw.get("alvo_1"),
             "take_profit_2": raw.get("alvo_2"),
+            "take_profit_3": raw.get("alvo_3") or self._take_profit_3(technical.get("signal"), entry, stop),
             "risk_reward": round(rr, 2),
         }
+
+    def _take_profit_3(self, signal, entry, stop):
+        risk = abs(entry - stop)
+        if signal == "SELL":
+            return round(entry - risk * 3, 8)
+        return round(entry + risk * 3, 8)
 
     def _trend_score(self, technical):
         direction = technical.get("trend", {}).get("direction", "SIDEWAYS")

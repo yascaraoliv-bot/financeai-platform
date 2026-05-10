@@ -1,6 +1,7 @@
 class LiveTradingDashboard {
     constructor() {
         this.symbol = 'BTCUSDT';
+        this.currentMarket = 'crypto';
         this.timeframe = '15m';
         this.chart = null;
         this.candleSeries = null;
@@ -9,13 +10,17 @@ class LiveTradingDashboard {
         this.socket = null;
         this.statusController = null;
         this.statusTimer = null;
+        this.candlePollTimer = null;
         this.countdownTimer = null;
         this.lastCandleTime = 0;
         this.lastAnalysisPrice = 0;
         this.lastAnalysisVolume = 0;
         this.lastAlertSignature = '';
+        this.lastSignalAlertSignature = '';
+        this.lastVoiceState = '';
         this.soundEnabled = false;
         this.supportResistance = {};
+        this.streaming = true;
         this.timeframeSeconds = { '1m': 60, '5m': 300, '15m': 900, '1h': 3600, '4h': 14400, '1d': 86400 };
         this.init();
     }
@@ -23,14 +28,21 @@ class LiveTradingDashboard {
     async init() {
         this.setupChart();
         this.bindEvents();
+        window.financeVoiceAssistant?.bindControls('voice');
         await this.loadAssets();
         await this.loadInitialCandles(true);
         this.fetchLiveStatus('initial');
+        this.fetchSignals();
         this.connectStreams();
         this.startCountdown();
     }
 
     bindEvents() {
+        document.getElementById('liveMarketSelect')?.addEventListener('change', async (event) => {
+            this.currentMarket = event.target.value;
+            await this.loadAssets();
+            this.resetLive(true);
+        });
         document.getElementById('liveAssetSelect')?.addEventListener('change', (event) => {
             this.symbol = event.target.value;
             this.resetLive(true);
@@ -45,16 +57,27 @@ class LiveTradingDashboard {
         });
         document.getElementById('liveFitChart')?.addEventListener('click', () => this.chart?.timeScale().fitContent());
         document.getElementById('liveSoundToggle')?.addEventListener('click', () => this.toggleSound());
+        document.getElementById('btnLiveSignals')?.addEventListener('click', () => {
+            document.getElementById('signals')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
         window.addEventListener('resize', () => this.resizeChart());
     }
 
     async loadAssets() {
         try {
-            const response = await fetch('/api/assets');
+            const response = await fetch(`/api/assets?market=${encodeURIComponent(this.currentMarket)}`);
             const data = await response.json();
             const select = document.getElementById('liveAssetSelect');
+            const marketSelect = document.getElementById('liveMarketSelect');
             if (!data.success || !select) return;
+            if (marketSelect && Array.isArray(data.markets)) {
+                marketSelect.innerHTML = data.markets.map((market) => `<option value="${market.key}">${market.label}</option>`).join('');
+                marketSelect.value = this.currentMarket;
+            }
             select.innerHTML = data.assets.map((asset) => `<option value="${asset.symbol}">${asset.symbol} - ${asset.name}</option>`).join('');
+            if (!data.assets.some((asset) => asset.symbol === this.symbol)) {
+                this.symbol = data.assets[0]?.symbol || 'BTCUSDT';
+            }
             select.value = this.symbol;
         } catch (error) {
             console.warn('Assets indisponiveis', error);
@@ -111,7 +134,12 @@ class LiveTradingDashboard {
 
     async resetLive(fit = false) {
         this.statusController?.abort();
-        if (this.socket) this.socket.close();
+        clearInterval(this.candlePollTimer);
+        if (this.socket) {
+            this.socket.onclose = null;
+            this.socket.close();
+            this.socket = null;
+        }
         this.clearPriceLines();
         this.setConnection('Atualizando');
         await this.loadInitialCandles(fit);
@@ -130,12 +158,16 @@ class LiveTradingDashboard {
             this.candleSeries.setData(candles);
             this.volumeSeries.setData(volumes);
             const last = candles[candles.length - 1] || {};
+            this.streaming = data.streaming ?? String(this.symbol).endsWith('USDT');
             this.lastCandleTime = Number(last.time || 0);
             this.lastAnalysisPrice = Number(last.close || 0);
             this.setText('livePrice', this.formatPrice(last.close || data.ticker?.lastPrice || 0));
-            this.setText('liveChartTitle', `${this.symbol} · ${this.timeframe}`);
+            this.setText('liveChartTitle', `${this.symbol} · ${String(data.source || '--').toUpperCase()} · ${this.timeframe}`);
+            this.setText('liveDataSource', String(data.source || '--').toUpperCase());
+            this.setText('liveMarketStatus', this.getMarketStatusText(data.market_status));
+            if (data.market_message) this.pushMessage(data.market_message);
             if (fit) this.chart.timeScale().fitContent();
-            this.setConnection('Grafico ativo');
+            this.setConnection(this.streaming ? 'Grafico ativo' : 'REST / historico');
         } catch (error) {
             this.setConnection('REST falhou');
             this.pushMessage('Nao foi possivel carregar historico. Tentando manter a tela ativa.');
@@ -143,6 +175,12 @@ class LiveTradingDashboard {
     }
 
     connectStreams() {
+        clearInterval(this.candlePollTimer);
+        if (!this.streaming || !String(this.symbol).endsWith('USDT')) {
+            this.setConnection('REST / historico');
+            this.candlePollTimer = setInterval(() => this.loadInitialCandles(false), 60000);
+            return;
+        }
         const stream = `${this.symbol.toLowerCase()}@kline_${this.timeframe}`;
         const url = `wss://stream.binance.com:9443/ws/${stream}`;
         this.socket = new WebSocket(url);
@@ -222,13 +260,118 @@ class LiveTradingDashboard {
         this.setText('liveStopLoss', this.formatPrice(data.stop_loss));
         this.setText('liveTakeProfit', this.formatPrice(data.take_profit));
         this.setText('liveReason', data.reason || '--');
-        this.setText('liveMarketStatus', data.market_status || '--');
+        this.setText('liveMarketStatus', this.getMarketStatusText(data.market_data_status || data.market_status));
+        this.setText('liveDataSource', String(data.source || '--').toUpperCase());
+        if (data.market_message) this.pushMessage(data.market_message);
         this.renderMessages(data.messages || []);
         this.renderInvalidations(data.invalidations || []);
         this.supportResistance = data.support_resistance || {};
         this.renderPriceLines(data);
         this.applyStateVisual(state);
         this.handleAlerts(data.alerts || [], data.status || state);
+        this.handleVoiceStatus(data);
+        if (data.signal_event) this.renderSignalEvent(data.signal_event);
+        this.fetchSignals();
+    }
+
+    handleVoiceStatus(data) {
+        const state = data?.state || '';
+        if (!state || state === this.lastVoiceState) return;
+        this.lastVoiceState = state;
+        window.financeVoiceAssistant?.speakLiveStatus(data);
+    }
+
+    fetchSignals() {
+        fetch(`/api/live/signals?symbol=${encodeURIComponent(this.symbol)}&timeframe=${encodeURIComponent(this.timeframe)}`)
+            .then((response) => response.json())
+            .then((data) => {
+                if (!data?.success) return;
+                this.renderSignals(data.active || []);
+                this.renderSignalEvent(data.signal);
+                this.setText('liveSignalsCount', data.stats?.active_count ?? 0);
+                this.setText('liveSignalsBadge', `${data.stats?.active_count ?? 0} oportunidades em tempo real`);
+            })
+            .catch(() => {});
+    }
+
+    renderSignalEvent(signal) {
+        if (!signal || signal.status === 'waiting_confirmation') return;
+        const signature = `${signal.id}:${signal.status}:${signal.partial_result || ''}`;
+        if (signature === this.lastSignalAlertSignature) return;
+        this.lastSignalAlertSignature = signature;
+        if (['active', 'confirmed', 'invalidated', 'tp1_hit', 'tp2_hit', 'tp3_hit', 'stopped'].includes(signal.status)) {
+            this.showToast(`Sinal IA ${signal.symbol}: ${this.signalStatusText(signal.status)}`, signal.status.includes('invalid') || signal.status === 'stopped' ? 'error' : 'success');
+            if (this.soundEnabled) this.playAlertSound(signal.alerts || []);
+            window.financeVoiceAssistant?.speakSignal(signal);
+        }
+    }
+
+    renderSignals(signals) {
+        const grid = document.getElementById('liveSignalsGrid');
+        if (!grid) return;
+        if (!signals.length) {
+            grid.innerHTML = '<div class="live-empty-signal">Aguardando confluencia forte da IA...</div>';
+            return;
+        }
+        grid.innerHTML = signals.map((signal) => this.signalCard(signal)).join('');
+    }
+
+    signalCard(signal) {
+        const sideClass = String(signal.direction || '').toLowerCase();
+        return `
+            <article class="live-signal-card ${sideClass}">
+                <div class="live-signal-head">
+                    <div>
+                        <h4>${signal.symbol || signal.asset} · ${signal.timeframe}</h4>
+                        <small>${signal.market_label || signal.market || '--'}</small>
+                    </div>
+                    <span class="live-signal-direction">${signal.direction || 'WAIT'}</span>
+                </div>
+                <div class="live-signal-metrics">
+                    <div><span>Score</span><strong>${signal.confluence_score ?? '--'}/100</strong></div>
+                    <div><span>Conf.</span><strong>${signal.confidence ?? '--'}%</strong></div>
+                    <div><span>R/R</span><strong>1:${Number(signal.risk_reward || 0).toFixed(2)}</strong></div>
+                </div>
+                <div class="live-signal-levels">
+                    <div><span>Entrada</span><strong>${this.formatPrice(signal.entry)}</strong></div>
+                    <div><span>Stop</span><strong>${this.formatPrice(signal.stop_loss)}</strong></div>
+                    <div><span>Take 1</span><strong>${this.formatPrice(signal.take_profit_1)}</strong></div>
+                    <div><span>Take 2</span><strong>${this.formatPrice(signal.take_profit_2)}</strong></div>
+                    <div><span>Take 3</span><strong>${this.formatPrice(signal.take_profit_3)}</strong></div>
+                    <div><span>Parcial</span><strong>${signal.partial_result || '--'}</strong></div>
+                </div>
+                <p class="live-signal-reason">${signal.explanation || signal.technical_reason || '--'}</p>
+                <div class="live-signal-status">
+                    <span>${this.signalStatusText(signal.status)}</span>
+                    <span>${this.remainingSignalTime(signal.expires_at)}</span>
+                </div>
+            </article>
+        `;
+    }
+
+    signalStatusText(status) {
+        const map = {
+            analyzing: 'Analisando',
+            waiting_confirmation: 'Aguardando',
+            active: 'Ativo',
+            confirmed: 'Confirmado',
+            invalidated: 'Invalidado',
+            tp1_hit: 'TP1 atingido',
+            tp2_hit: 'TP2 atingido',
+            tp3_hit: 'TP3 atingido',
+            stopped: 'Stop atingido',
+            closed: 'Fechado',
+        };
+        return map[status] || status || '--';
+    }
+
+    remainingSignalTime(expiresAt) {
+        if (!expiresAt) return '--';
+        const diff = new Date(expiresAt).getTime() - Date.now();
+        if (diff <= 0) return 'expirando';
+        const minutes = Math.floor(diff / 60000);
+        const hours = Math.floor(minutes / 60);
+        return hours ? `${hours}h ${minutes % 60}m` : `${minutes}m`;
     }
 
     renderMessages(messages) {
@@ -286,6 +429,17 @@ class LiveTradingDashboard {
         const resistance = Number(this.supportResistance.nearest_resistance);
         const support = Number(this.supportResistance.nearest_support);
         return (Number.isFinite(resistance) && price > resistance) || (Number.isFinite(support) && price < support);
+    }
+
+    getMarketStatusText(status) {
+        const map = {
+            open: 'ABERTO',
+            closed: 'FECHADO',
+            no_data: 'SEM DADOS',
+            fallback: 'FALLBACK',
+            unknown: 'INDEFINIDO',
+        };
+        return map[status] || String(status || '--').toUpperCase();
     }
 
     applyStateVisual(state) {

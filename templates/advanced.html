@@ -8,6 +8,9 @@
     <div class="top-controls">
         <div class="controls-left">
             <div class="asset-timeframe-selector">
+                <select id="marketSelect" class="form-control-premium">
+                    <option value="crypto">Criptomoedas</option>
+                </select>
                 <select id="assetSelect" class="form-control-premium">
                     <option value="BTCUSDT">BTCUSDT - Bitcoin</option>
                     <option value="ETHUSDT">ETHUSDT - Ethereum</option>
@@ -43,6 +46,14 @@
                 <div class="info-item">
                     <span class="label">Status</span>
                     <span class="value live-status" id="connectionState">--</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Fonte</span>
+                    <span class="value" id="dataSource">--</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Mercado</span>
+                    <span class="value" id="marketState">--</span>
                 </div>
                 <div class="info-item">
                     <span class="label">Atualizado</span>
@@ -83,6 +94,10 @@
                     <a class="chart-tool-link" href="{{ url_for('live') }}" title="Abrir Live Trading IA">
                         <i class="fas fa-bolt"></i>
                         Live IA
+                    </a>
+                    <a class="chart-tool-link" href="{{ url_for('live') }}#signals" title="Abrir Sinais IA em tempo real">
+                        <i class="fas fa-satellite-dish"></i>
+                        Sinais IA
                     </a>
                     <button class="chart-tool-btn" data-chart-action="fit" title="Ajustar grafico">
                         <i class="fas fa-redo"></i>

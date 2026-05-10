@@ -34,11 +34,15 @@
                     <i class="fas fa-bolt"></i>
                     <span>Live Trading IA</span>
                 </a>
+                <a href="{{ url_for('replay') }}" class="nav-item {% if request.path == '/replay' %}active{% endif %}" data-page="replay">
+                    <i class="fas fa-history"></i>
+                    <span>Replay IA</span>
+                </a>
                 <a href="#" class="nav-item" data-page="análise">
                     <i class="fas fa-chart-bar"></i>
                     <span>Análise</span>
                 </a>
-                <a href="#" class="nav-item" data-page="sinais">
+                <a href="{{ url_for('live') }}#signals" class="nav-item" data-page="sinais">
                     <i class="fas fa-bell"></i>
                     <span>Sinais IA</span>
                 </a>

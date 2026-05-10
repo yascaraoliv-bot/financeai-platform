@@ -576,9 +576,33 @@
     padding: 14px;
 }
 
+.live-signals-open {
+    min-height: 48px;
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    padding: 0 14px;
+    border: 1px solid rgba(56, 189, 248, 0.35);
+    border-radius: 8px;
+    color: var(--accent-blue);
+    background: rgba(56, 189, 248, 0.10);
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.live-signals-open strong {
+    min-width: 24px;
+    min-height: 24px;
+    display: inline-grid;
+    place-items: center;
+    border-radius: 999px;
+    color: #04111f;
+    background: var(--accent-blue);
+}
+
 .live-market-strip {
     display: grid;
-    grid-template-columns: repeat(4, minmax(110px, 1fr));
+    grid-template-columns: repeat(5, minmax(100px, 1fr));
     gap: 10px;
 }
 
@@ -752,6 +776,213 @@
 .live-invalidation-row i {
     margin-top: 2px;
     color: var(--accent-red);
+}
+
+.live-signals-panel {
+    display: grid;
+    gap: 12px;
+    padding: 14px;
+    background: rgba(12, 18, 30, 0.88);
+    border: 1px solid rgba(148, 163, 184, 0.17);
+    border-radius: 8px;
+}
+
+.live-signals-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 12px;
+}
+
+.live-signal-card,
+.live-empty-signal {
+    padding: 12px;
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    border-left: 4px solid #94a3b8;
+    border-radius: 8px;
+    background: rgba(2, 6, 23, 0.42);
+}
+
+.live-signal-card.buy {
+    border-left-color: var(--accent-green);
+}
+
+.live-signal-card.sell {
+    border-left-color: var(--accent-red);
+}
+
+.live-signal-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    align-items: flex-start;
+}
+
+.live-signal-head h4 {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 15px;
+}
+
+.live-signal-direction {
+    padding: 4px 8px;
+    border-radius: 4px;
+    color: #04111f;
+    background: #94a3b8;
+    font-size: 11px;
+    font-weight: 900;
+}
+
+.live-signal-card.buy .live-signal-direction {
+    background: var(--accent-green);
+}
+
+.live-signal-card.sell .live-signal-direction {
+    background: var(--accent-red);
+    color: white;
+}
+
+.live-signal-metrics,
+.live-signal-levels {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 7px;
+    margin-top: 10px;
+}
+
+.live-signal-metrics div,
+.live-signal-levels div {
+    min-width: 0;
+    padding: 7px;
+    border: 1px solid rgba(148, 163, 184, 0.12);
+    border-radius: 4px;
+    background: rgba(15, 23, 42, 0.55);
+}
+
+.live-signal-metrics span,
+.live-signal-levels span {
+    display: block;
+    color: var(--text-secondary);
+    font-size: 9px;
+    text-transform: uppercase;
+}
+
+.live-signal-metrics strong,
+.live-signal-levels strong {
+    display: block;
+    margin-top: 3px;
+    color: var(--text-primary);
+    font-size: 12px;
+}
+
+.live-signal-reason {
+    margin-top: 10px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.live-signal-status {
+    margin-top: 10px;
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    color: var(--text-secondary);
+    font-size: 11px;
+}
+
+.replay-controls,
+.replay-actions {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(120px, 1fr));
+    gap: 10px;
+    padding: 12px;
+    background: rgba(12, 18, 30, 0.88);
+    border: 1px solid rgba(148, 163, 184, 0.17);
+    border-radius: 8px;
+}
+
+.replay-actions {
+    grid-template-columns: repeat(6, auto) 1fr;
+    align-items: center;
+}
+
+.replay-progress {
+    display: grid;
+    gap: 6px;
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+.replay-progress div {
+    height: 8px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: rgba(148, 163, 184, 0.16);
+}
+
+.replay-progress span span,
+.replay-progress div span {
+    display: block;
+}
+
+#replayProgressBar {
+    height: 100%;
+    width: 0;
+    background: var(--accent-blue);
+}
+
+.replay-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+}
+
+.replay-stat {
+    padding: 10px;
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    border-radius: 6px;
+    background: rgba(2, 6, 23, 0.42);
+}
+
+.replay-stat span {
+    display: block;
+    color: var(--text-secondary);
+    font-size: 10px;
+    text-transform: uppercase;
+}
+
+.replay-stat strong {
+    display: block;
+    margin-top: 5px;
+    color: var(--text-primary);
+    font-size: 16px;
+}
+
+.voice-card {
+    display: grid;
+    gap: 10px;
+}
+
+.voice-controls {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.voice-controls label {
+    display: grid;
+    gap: 5px;
+    color: var(--text-secondary);
+    font-size: 11px;
+}
+
+.voice-controls input[type="range"],
+.voice-controls select {
+    width: 100%;
+}
+
+.voice-controls select {
+    grid-column: 1 / -1;
 }
 
 /* Support Resistance */

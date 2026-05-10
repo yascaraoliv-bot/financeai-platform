@@ -13,13 +13,16 @@ from ia.analysis import (
     create_heatmap_data,
     generate_ai_reasoning,
 )
-from ia.binance_client import BinanceMarketData, TimedCache
+from ia.binance_client import TimedCache
 from ia.confluence_engine import DISCLAIMER, build_confluence_analysis
 from ia.data_generator import generate_realistic_data
 from ia.final_score import calculate_final_score
 from ia.institutional import OperationalValidator, PatternLearner, ProfessionalBacktest
 from ia.live_trading import build_live_status
+from ia.live_signals import LiveSignalManager
+from ia.market_data_router import MarketDataRouter
 from ia.operational_signal import build_operational_signal
+from ia.replay_engine import ReplayEngine
 from ia.smart_money import analyze_smart_money
 from ia.technical_reader import read_technical
 from ia.volume_reader import read_volume
@@ -44,13 +47,15 @@ app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "dev-secret-change-me")
 init_db()
 
-market = BinanceMarketData()
+market = MarketDataRouter()
 candle_cache = TimedCache(ttl_seconds=12)
 ticker_cache = TimedCache(ttl_seconds=8)
 chart_payload_cache = TimedCache(ttl_seconds=8)
 analysis_response_cache = TimedCache(ttl_seconds=10)
 analysis_core_cache = TimedCache(ttl_seconds=10)
 live_status_cache = TimedCache(ttl_seconds=3)
+live_signal_manager = LiveSignalManager()
+replay_engine = ReplayEngine()
 
 SUPPORTED_TIMEFRAMES = ["1m", "5m", "15m", "1h", "4h", "1d", "1w"]
 HEATMAP_TIMEFRAMES = ["5m", "15m", "1h", "4h", "1d"]
@@ -268,14 +273,16 @@ def load_market_data(symbol, timeframe, limit=500):
     try:
         return candle_cache.set(key, market.get_klines(symbol, timeframe, limit))
     except Exception:
-        if symbol != DEFAULT_SYMBOL:
-            fallback_key = f"klines:{DEFAULT_SYMBOL}:{timeframe}:{limit}"
-            cached = candle_cache.get(fallback_key)
-            if cached is not None:
-                return cached
-            return candle_cache.set(fallback_key, market.get_klines(DEFAULT_SYMBOL, timeframe, limit))
-        df = generate_realistic_data(DEFAULT_SYMBOL, days=90, interval=timeframe)
-        return candle_cache.set(key, df.tail(limit))
+        if market.identify_market(symbol) == "crypto":
+            if symbol != DEFAULT_SYMBOL:
+                fallback_key = f"klines:{DEFAULT_SYMBOL}:{timeframe}:{limit}"
+                cached = candle_cache.get(fallback_key)
+                if cached is not None:
+                    return cached
+                return candle_cache.set(fallback_key, market.get_klines(DEFAULT_SYMBOL, timeframe, limit))
+            df = generate_realistic_data(DEFAULT_SYMBOL, days=90, interval=timeframe)
+            return candle_cache.set(key, df.tail(limit))
+        raise
 
 
 def get_cached_chart_payload(symbol, timeframe, limit):
@@ -517,9 +524,10 @@ def get_ticker(symbol):
     try:
         return ticker_cache.set(symbol, market.get_24h_ticker(symbol))
     except Exception:
-        if symbol != DEFAULT_SYMBOL:
+        if symbol != DEFAULT_SYMBOL and market.identify_market(symbol) == "crypto":
             return get_ticker(DEFAULT_SYMBOL)
-        return {"lastPrice": 0, "priceChangePercent": 0, "quoteVolume": 0, "volume": 0, "count": 0}
+        meta = market.last_meta(symbol)
+        return {"lastPrice": 0, "priceChangePercent": 0, "quoteVolume": 0, "volume": 0, "count": 0, **meta}
 
 
 @app.route("/")
@@ -537,6 +545,12 @@ def advanced():
 @login_required
 def live():
     return render_template("live.html")
+
+
+@app.route("/replay")
+@login_required
+def replay():
+    return render_template("replay.html")
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -579,11 +593,17 @@ def get_candles(symbol, timeframe):
         df = cached_payload["df"]
         payload = cached_payload["payload"]
         ticker = get_ticker(requested_symbol)
+        market_meta = market.last_meta(requested_symbol)
         response = {
             "success": True,
-            "source": "binance",
+            "source": market_meta.get("source", "binance"),
             "requested_symbol": requested_symbol,
             "symbol": requested_symbol if requested_symbol == DEFAULT_SYMBOL else normalize_symbol(symbol),
+            "market": market_meta.get("market"),
+            "market_label": market_meta.get("market_label"),
+            "market_status": market_meta.get("market_status", "unknown"),
+            "market_message": market_meta.get("message"),
+            "streaming": market_meta.get("streaming", False),
             "timeframe": timeframe,
             "candles": payload.get("candles", []),
             "volumes": payload.get("volumes", []),
@@ -598,6 +618,25 @@ def get_candles(symbol, timeframe):
         }
         return jsonify(sanitize_json(response))
     except Exception as error:
+        if market.identify_market(requested_symbol) != "crypto":
+            meta = market.last_meta(requested_symbol)
+            return jsonify(sanitize_json({
+                "success": False,
+                "source": meta.get("source"),
+                "requested_symbol": requested_symbol,
+                "symbol": requested_symbol,
+                "market": meta.get("market"),
+                "market_label": meta.get("market_label"),
+                "market_status": "no_data",
+                "market_message": meta.get("message") or f"Nao ha dados disponiveis para {requested_symbol} agora.",
+                "streaming": False,
+                "timeframe": timeframe,
+                "candles": [],
+                "volumes": [],
+                "overlays": {},
+                "error": str(error),
+                "ticker": {"lastPrice": 0, "priceChangePercent": 0, "quoteVolume": 0, "volume": 0, "count": 0},
+            })), 200
         try:
             df = load_market_data(DEFAULT_SYMBOL, "1h", 500)
             payload = TechnicalAnalysis(df).chart_payload()
@@ -606,6 +645,11 @@ def get_candles(symbol, timeframe):
                 "source": "fallback",
                 "requested_symbol": requested_symbol,
                 "symbol": DEFAULT_SYMBOL,
+                "market": "crypto",
+                "market_label": "Criptomoedas",
+                "market_status": "fallback",
+                "market_message": f"Nao foi possivel carregar {requested_symbol}. Exibindo BTCUSDT como fallback.",
+                "streaming": True,
                 "timeframe": "1h",
                 "candles": payload.get("candles", []),
                 "volumes": payload.get("volumes", []),
@@ -628,6 +672,7 @@ def get_analysis(symbol, timeframe):
     try:
         df, ta, signal, levels, patterns, score, smc, validation, volume_analysis, wyckoff = build_analysis(symbol, timeframe)
         ticker = get_ticker(symbol)
+        market_meta = market.last_meta(symbol)
         current_price = float(df["close"].iloc[-1])
         previous_price = float(df["close"].iloc[-2]) if len(df) > 1 else current_price
         price_change = ((current_price - previous_price) / previous_price * 100) if previous_price else 0
@@ -699,8 +744,13 @@ def get_analysis(symbol, timeframe):
 
         response = {
             "success": True,
-            "source": "binance",
+            "source": market_meta.get("source", "binance"),
             "symbol": normalize_symbol(symbol),
+            "market": market_meta.get("market"),
+            "market_label": market_meta.get("market_label"),
+            "market_status": market_meta.get("market_status", "unknown"),
+            "market_message": market_meta.get("message"),
+            "streaming": market_meta.get("streaming", False),
             "timeframe": timeframe,
             "signal": signal,
             "levels": levels,
@@ -750,9 +800,17 @@ def get_analysis(symbol, timeframe):
         return jsonify(sanitize_json(response))
     except Exception as error:
         institutional_payload = build_institutional_payload(default_smc(), default_wyckoff())
+        market_meta = market.last_meta(symbol)
         return jsonify(sanitize_json({
             "success": False,
             "error": str(error),
+            "symbol": normalize_symbol(symbol),
+            "source": market_meta.get("source"),
+            "market": market_meta.get("market"),
+            "market_label": market_meta.get("market_label"),
+            "market_status": "no_data",
+            "market_message": market_meta.get("message") or f"Nao ha dados suficientes para analisar {normalize_symbol(symbol)} agora.",
+            "streaming": market_meta.get("streaming", False),
             "signal": default_signal(None),
             "levels": {},
             "markers": [],
@@ -864,6 +922,20 @@ def api_live_status(symbol, timeframe):
         df = load_market_data(symbol, timeframe, 260)
         ticker = get_ticker(symbol)
         status = build_live_status(df, symbol, timeframe, ticker)
+        mtf_confluence = {}
+        try:
+            _, mtf_confluence = build_multi_timeframe(symbol)
+        except Exception:
+            mtf_confluence = {"strong_signal_allowed": True}
+        status.update({
+            "market": market.last_meta(symbol).get("market"),
+            "market_label": market.last_meta(symbol).get("market_label"),
+            "source": market.last_meta(symbol).get("source"),
+            "market_data_status": market.last_meta(symbol).get("market_status"),
+            "market_message": market.last_meta(symbol).get("message"),
+            "streaming": market.last_meta(symbol).get("streaming", False),
+        })
+        status["signal_event"] = live_signal_manager.update_from_live_status(status, market.last_meta(symbol), mtf_confluence)
         live_status_cache.set(cache_key, status)
         return jsonify(sanitize_json(status))
     except Exception as error:
@@ -894,6 +966,144 @@ def api_live_status(symbol, timeframe):
         return jsonify(sanitize_json(fallback)), 200
 
 
+@app.route("/api/live/signals")
+@login_required
+def api_live_signals():
+    symbol = normalize_symbol(request.args.get("symbol", DEFAULT_SYMBOL))
+    timeframe = normalize_timeframe(request.args.get("timeframe", "15m"))
+    cache_key = f"live-signals:{symbol}:{timeframe}"
+    cached = live_status_cache.get(cache_key)
+    if cached is not None:
+        return jsonify(sanitize_json(cached))
+    try:
+        df = load_market_data(symbol, timeframe, 260)
+        ticker = get_ticker(symbol)
+        status = build_live_status(df, symbol, timeframe, ticker)
+        mtf_confluence = {}
+        try:
+            _, mtf_confluence = build_multi_timeframe(symbol)
+        except Exception:
+            mtf_confluence = {"strong_signal_allowed": True}
+        status.update({
+            "market": market.last_meta(symbol).get("market"),
+            "market_label": market.last_meta(symbol).get("market_label"),
+            "source": market.last_meta(symbol).get("source"),
+            "market_data_status": market.last_meta(symbol).get("market_status"),
+            "streaming": market.last_meta(symbol).get("streaming", False),
+        })
+        current_signal = live_signal_manager.update_from_live_status(status, market.last_meta(symbol), mtf_confluence)
+        response = {
+            "success": True,
+            "signal": current_signal,
+            "active": live_signal_manager.list_active(),
+            "stats": live_signal_manager.stats(),
+            "disclaimer": "Analise educativa. Nao constitui recomendacao financeira. Toda operacao envolve risco.",
+        }
+        live_status_cache.set(cache_key, response)
+        return jsonify(sanitize_json(response))
+    except Exception as error:
+        return jsonify({"success": False, "error": str(error), "active": live_signal_manager.list_active(), "stats": live_signal_manager.stats()}), 200
+
+
+@app.route("/api/live/signals/active")
+@login_required
+def api_live_signals_active():
+    return jsonify(sanitize_json({
+        "success": True,
+        "active": live_signal_manager.list_active(),
+        "stats": live_signal_manager.stats(),
+        "disclaimer": "Analise educativa. Nao constitui recomendacao financeira. Toda operacao envolve risco.",
+    }))
+
+
+@app.route("/api/live/signals/history")
+@login_required
+def api_live_signals_history():
+    limit = int(request.args.get("limit", 100))
+    return jsonify(sanitize_json({
+        "success": True,
+        "history": live_signal_manager.list_history(limit),
+        "stats": live_signal_manager.stats(),
+    }))
+
+
+@app.route("/api/replay/start", methods=["POST"])
+@login_required
+def api_replay_start():
+    payload = request.get_json(silent=True) or {}
+    symbol = normalize_symbol(payload.get("symbol", DEFAULT_SYMBOL))
+    timeframe = normalize_timeframe(payload.get("timeframe", "15m"))
+    speed = int(payload.get("speed", 1))
+    try:
+        df = load_market_data(symbol, timeframe, 1000)
+        meta = market.last_meta(symbol)
+        session = replay_engine.create(
+            candles=df,
+            symbol=symbol,
+            market=meta.get("market"),
+            timeframe=timeframe,
+            start_date=payload.get("start_date"),
+            end_date=payload.get("end_date"),
+            speed=speed,
+        )
+        return jsonify(sanitize_json(session.start()))
+    except Exception as error:
+        return jsonify({"success": False, "error": str(error), "message": "Nao foi possivel iniciar o replay para o periodo escolhido."}), 200
+
+
+@app.route("/api/replay/step", methods=["POST"])
+@login_required
+def api_replay_step():
+    payload = request.get_json(silent=True) or {}
+    try:
+        session = replay_engine.get(payload.get("session_id"))
+        return jsonify(sanitize_json(session.step(int(payload.get("direction", 1)))))
+    except Exception as error:
+        return jsonify({"success": False, "error": str(error)}), 200
+
+
+@app.route("/api/replay/pause", methods=["POST"])
+@login_required
+def api_replay_pause():
+    payload = request.get_json(silent=True) or {}
+    try:
+        session = replay_engine.get(payload.get("session_id"))
+        return jsonify(sanitize_json(session.pause()))
+    except Exception as error:
+        return jsonify({"success": False, "error": str(error)}), 200
+
+
+@app.route("/api/replay/reset", methods=["POST"])
+@login_required
+def api_replay_reset():
+    payload = request.get_json(silent=True) or {}
+    try:
+        session = replay_engine.get(payload.get("session_id"))
+        return jsonify(sanitize_json(session.reset()))
+    except Exception as error:
+        return jsonify({"success": False, "error": str(error)}), 200
+
+
+@app.route("/api/replay/status")
+@login_required
+def api_replay_status():
+    try:
+        session = replay_engine.get(request.args.get("session_id"))
+        return jsonify(sanitize_json(session.status()))
+    except Exception as error:
+        return jsonify({"success": False, "error": str(error)}), 200
+
+
+@app.route("/api/replay/results")
+@login_required
+def api_replay_results():
+    try:
+        session = replay_engine.get(request.args.get("session_id"))
+        return jsonify(sanitize_json(session.results()))
+    except Exception as error:
+        return jsonify({"success": False, "error": str(error)}), 200
+
+
 @app.route("/api/heatmap")
 def get_heatmap():
     try:
@@ -903,8 +1113,9 @@ def get_heatmap():
             requested = [normalize_symbol(item) for item in selected.split(",") if item.strip()]
             assets = [asset for asset in assets if asset["symbol"] in requested] or assets
 
+        assets = assets[:8]
         heatmap = create_mtf_heatmap(assets, HEATMAP_TIMEFRAMES)
-        return jsonify({"success": True, "source": "binance", "heatmap": heatmap})
+        return jsonify({"success": True, "source": "router", "heatmap": heatmap})
     except Exception as error:
         return jsonify({"success": False, "error": str(error)}), 400
 
@@ -940,9 +1151,10 @@ def run_backtest(symbol):
     try:
         timeframe = request.args.get("timeframe", "1h")
         df = load_market_data(symbol, timeframe, 1000)
+        market_meta = market.last_meta(symbol)
         result = ProfessionalBacktest(df, initial_capital=10000, risk_per_trade=0.01).run()
         result["pattern_learning"] = PatternLearner().summarize(result)
-        return jsonify({"success": True, "source": "binance", "symbol": normalize_symbol(symbol), "backtest": result})
+        return jsonify({"success": True, "source": market_meta.get("source"), "market": market_meta.get("market"), "symbol": normalize_symbol(symbol), "backtest": result})
     except Exception as error:
         return jsonify({"success": False, "error": str(error)}), 400
 
@@ -1024,7 +1236,13 @@ def send_telegram(bot_token, chat_id, message):
 
 @app.route("/api/assets")
 def get_assets():
-    return jsonify({"success": True, "source": "binance", "assets": market.get_assets()})
+    market_key = request.args.get("market")
+    return jsonify({
+        "success": True,
+        "source": "router",
+        "markets": market.get_markets(),
+        "assets": market.get_assets(market_key),
+    })
 
 
 @app.route("/api/timeframes")

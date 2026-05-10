@@ -1,6 +1,7 @@
 class AdvancedDashboard {
     constructor() {
         this.currentAsset = 'BTCUSDT';
+        this.currentMarket = 'crypto';
         this.currentTimeframe = '1h';
         this.chart = null;
         this.candleSeries = null;
@@ -25,6 +26,7 @@ class AdvancedDashboard {
         this.analysisTimeoutMs = 12000;
         this.candleMemoryCache = new Map();
         this.analysisMemoryCache = new Map();
+        this.latestStreaming = true;
         this.init();
     }
 
@@ -38,6 +40,12 @@ class AdvancedDashboard {
 
     setupEventListeners() {
         const assetSelect = document.getElementById('assetSelect');
+        const marketSelect = document.getElementById('marketSelect');
+        marketSelect?.addEventListener('change', async (event) => {
+            this.currentMarket = event.target.value;
+            await this.loadAssets();
+            this.updateDashboard(true);
+        });
         assetSelect?.addEventListener('change', (event) => {
             this.currentAsset = event.target.value;
             this.updateDashboard();
@@ -63,14 +71,25 @@ class AdvancedDashboard {
     }
 
     async loadAssets() {
-        const response = await fetch('/api/assets');
+        const response = await fetch(`/api/assets?market=${encodeURIComponent(this.currentMarket)}`);
         const data = await response.json();
         const select = document.getElementById('assetSelect');
+        const marketSelect = document.getElementById('marketSelect');
         if (!data.success || !select) return;
+
+        if (marketSelect && Array.isArray(data.markets)) {
+            marketSelect.innerHTML = data.markets.map((market) => (
+                `<option value="${market.key}">${market.label}</option>`
+            )).join('');
+            marketSelect.value = this.currentMarket;
+        }
 
         select.innerHTML = data.assets.map((asset) => (
             `<option value="${asset.symbol}">${asset.symbol} - ${asset.name}</option>`
         )).join('');
+        if (!data.assets.some((asset) => asset.symbol === this.currentAsset)) {
+            this.currentAsset = data.assets[0]?.symbol || 'BTCUSDT';
+        }
         select.value = this.currentAsset;
     }
 
@@ -171,6 +190,7 @@ class AdvancedDashboard {
             if (seq !== this.requestSeq) return;
             if (!candles.success) throw new Error(candles.error || 'Erro nos candles');
 
+            this.latestStreaming = candles.streaming ?? String(this.currentAsset).endsWith('USDT');
             this.updateChart(candles, null, fit);
             this.setChartLoading('');
             this.connectMarketStreams();
@@ -295,6 +315,10 @@ class AdvancedDashboard {
             success: true,
             symbol: this.currentAsset,
             timeframe: this.currentTimeframe,
+            source: candlesPayload?.source || '--',
+            market_status: candlesPayload?.market_status || 'unknown',
+            market_message: candlesPayload?.market_message || '',
+            streaming: candlesPayload?.streaming ?? String(this.currentAsset).endsWith('USDT'),
             current_price: price,
             price_change: Number(candlesPayload?.ticker?.priceChangePercent || 0),
             signal: {
@@ -341,6 +365,15 @@ class AdvancedDashboard {
     }
 
     connectMarketStreams() {
+        if (this.latestStreaming === false || !String(this.currentAsset).endsWith('USDT')) {
+            if (this.klineSocket) {
+                this.klineSocket.onclose = null;
+                this.klineSocket.close();
+                this.klineSocket = null;
+            }
+            this.setConnectionState('REST / historico');
+            return;
+        }
         const symbol = this.currentAsset.toLowerCase();
         const streams = [`${symbol}@kline_${this.currentTimeframe}`, `${symbol}@aggTrade`].join('/');
         const url = `wss://stream.binance.com:9443/stream?streams=${streams}`;
@@ -483,6 +516,9 @@ class AdvancedDashboard {
         const signal = analysis.signal || {};
         const indicators = signal.indicators || {};
         const ticker = analysis.ticker || candlesPayload.ticker || {};
+        const source = analysis.source || candlesPayload.source || '--';
+        const marketStatus = analysis.market_status || candlesPayload.market_status || '--';
+        const marketMessage = analysis.market_message || candlesPayload.market_message || '';
         const confluenceAI = analysis.confluence_ai || {};
         const operationalSignal = analysis.operational_signal || {};
         const finalScore = analysis.final_score || {};
@@ -492,9 +528,12 @@ class AdvancedDashboard {
         const mtfConfluence = analysis.multi_timeframe?.confluence;
         const activeSignal = operationalSignal.signal || confluenceAI.signal || finalScore.signal || this.getSignalText(signal.signal_type);
 
-        this.setText('chartTitle', `${analysis.symbol} · Binance · ${analysis.timeframe}`);
+        this.latestStreaming = analysis.streaming ?? candlesPayload.streaming ?? this.latestStreaming;
+        this.setText('chartTitle', `${analysis.symbol} · ${String(source).toUpperCase()} · ${analysis.timeframe}`);
         this.setText('currentPrice', this.formatPrice(analysis.current_price));
         this.setText('priceChange', `${Number(ticker.priceChangePercent || analysis.price_change || 0).toFixed(2)}%`);
+        this.setText('dataSource', String(source).toUpperCase());
+        this.setText('marketState', this.getMarketStatusText(marketStatus));
         this.setText('operationalScore', `${Math.round(gaugeScore)}/100`);
         this.setText('scoreValue', finalScore10.toFixed(1));
         this.setText('finalScoreValue', finalScore10.toFixed(1));
@@ -532,6 +571,7 @@ class AdvancedDashboard {
         this.setText('bbValue', `${this.formatPrice(indicators.bollinger_lower)} - ${this.formatPrice(indicators.bollinger_upper)}`);
 
         this.updateReasoning(operationalSignal.confirmations || confluenceAI.confirmations || finalScore.technical_reasons || analysis.reasoning || []);
+        if (marketMessage) this.pushSoftMessage(marketMessage);
         this.updateInvalidations(operationalSignal.invalidations || confluenceAI.invalidations || finalScore.invalidation_reasons || []);
         this.updateSupportResistance(Array.isArray(analysis.support_resistance) ? analysis.support_resistance : [], analysis.current_price || 0);
         this.updateCandleReading(Array.isArray(analysis.candle_reading) ? analysis.candle_reading : []);
@@ -589,6 +629,16 @@ class AdvancedDashboard {
         this.updateWyckoffPanel(wyckoff);
         this.updateVolumeInstitutionalPanel(analysis.volume_analysis || {});
         this.setOperationalState(analysis.operational_state || {});
+    }
+
+    pushSoftMessage(message) {
+        const list = document.getElementById('reasoningList');
+        if (!list || !message) return;
+        const item = document.createElement('div');
+        item.className = 'reasoning-item';
+        item.innerHTML = `<i class="fas fa-info-circle"></i><span>${message}</span>`;
+        list.prepend(item);
+        while (list.children.length > 12) list.lastElementChild.remove();
     }
 
     updateWyckoffPanel(wyckoff) {
@@ -934,6 +984,17 @@ class AdvancedDashboard {
             NEUTRAL: 'NEUTRO',
         };
         return map[direction] || direction || '--';
+    }
+
+    getMarketStatusText(status) {
+        const map = {
+            open: 'ABERTO',
+            closed: 'FECHADO',
+            no_data: 'SEM DADOS',
+            fallback: 'FALLBACK',
+            unknown: 'INDEFINIDO',
+        };
+        return map[status] || String(status || '--').toUpperCase();
     }
 
     formatPrice(price) {

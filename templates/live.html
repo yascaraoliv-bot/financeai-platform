@@ -10,6 +10,9 @@
 
     <div class="live-toolbar">
         <div class="asset-timeframe-selector">
+            <select id="liveMarketSelect" class="form-control-premium">
+                <option value="crypto">Criptomoedas</option>
+            </select>
             <select id="liveAssetSelect" class="form-control-premium">
                 <option value="BTCUSDT">BTCUSDT - Bitcoin</option>
             </select>
@@ -25,8 +28,14 @@
             <div><span>Preco</span><strong id="livePrice">--</strong></div>
             <div><span>Candle</span><strong id="liveCountdown">--</strong></div>
             <div><span>Mercado</span><strong id="liveMarketStatus">--</strong></div>
+            <div><span>Fonte</span><strong id="liveDataSource">--</strong></div>
             <div><span>Conexao</span><strong id="liveConnection">--</strong></div>
         </div>
+        <button class="live-signals-open" id="btnLiveSignals" type="button">
+            <i class="fas fa-satellite-dish"></i>
+            <span>Sinais IA</span>
+            <strong id="liveSignalsCount">0</strong>
+        </button>
     </div>
 
     <div class="live-grid">
@@ -85,12 +94,44 @@
                 <div class="card-title">Invalidacoes</div>
                 <div class="live-invalidations" id="liveInvalidations"></div>
             </div>
+
+            <div class="analysis-card voice-card">
+                <div class="card-title">Voz IA</div>
+                <div class="validation-stack">
+                    <div><span>Status</span><strong id="voiceStatus">DESLIGADA</strong></div>
+                    <div><span>Idioma</span><strong>pt-BR</strong></div>
+                </div>
+                <div class="voice-controls">
+                    <button class="btn-run-backtest" id="voiceToggle" type="button">Ativar voz</button>
+                    <button class="btn-run-backtest" id="voiceTest" type="button">Testar voz</button>
+                    <button class="btn-run-backtest" id="voiceStop" type="button">Parar</button>
+                    <label>Volume <input id="voiceVolume" type="range" min="0" max="1" step="0.05" value="0.85"></label>
+                    <label>Velocidade <input id="voiceRate" type="range" min="0.6" max="1.6" step="0.05" value="1"></label>
+                    <select id="voiceSelect" class="form-control-premium"></select>
+                </div>
+                <div class="institutional-explanation">Ultima mensagem: <span id="voiceLastMessage">--</span></div>
+                <div class="institutional-explanation">As mensagens de voz sao educativas e nao constituem recomendacao financeira.</div>
+            </div>
         </aside>
     </div>
+
+    <section class="live-signals-panel" id="signals">
+        <div class="card-header-detailed">
+            <h3>Sinais IA em Tempo Real</h3>
+            <span class="badge-ai" id="liveSignalsBadge">Oportunidades em tempo real</span>
+        </div>
+        <div class="risk-disclaimer">
+            Analise educativa. Nao constitui recomendacao financeira. Toda operacao envolve risco.
+        </div>
+        <div class="live-signals-grid" id="liveSignalsGrid">
+            <div class="live-empty-signal">Aguardando confluencia forte da IA...</div>
+        </div>
+    </section>
 </div>
 {% endblock %}
 
 {% block extra_js %}
 <script src="https://unpkg.com/lightweight-charts@3/dist/lightweight-charts.standalone.production.js"></script>
+<script src="{{ url_for('static', filename='js/voice-assistant.js') }}"></script>
 <script src="{{ url_for('static', filename='js/live-trading.js') }}"></script>
 {% endblock %}
