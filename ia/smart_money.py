@@ -32,6 +32,8 @@ class SmartMoneyAnalyzer:
         nearest_order_block = self._nearest_zone(order_blocks)
         relevant_fvg = self._nearest_zone(fair_value_gaps)
         nearest_liquidity_zone = self._nearest_zone(liquidity_zones)
+        inducement = self._inducement(liquidity_zones, structure)
+        institutional_bias = self._institutional_bias(structure, nearest_order_block, relevant_fvg, liquidity_sweep, false_breakout)
         score_adjustment = self._score_adjustment(
             signal_type,
             structure,
@@ -40,25 +42,39 @@ class SmartMoneyAnalyzer:
             nearest_liquidity_zone,
             liquidity_sweep,
             false_breakout,
+            institutional_bias,
+            inducement,
         )
         confirmed = score_adjustment["confirmed"]
         invalidated = score_adjustment["invalidated"]
+        smc_score = int(max(0, min(100, 50 + score_adjustment["value"] * 2)))
+        confirmations = score_adjustment["confirmations"]
+        invalidations = score_adjustment["invalidations"]
+        explanation = self._explanation(institutional_bias, structure, nearest_order_block, relevant_fvg, nearest_liquidity_zone, liquidity_sweep, false_breakout)
 
         return {
+            "smc_score": smc_score,
+            "institutional_bias": institutional_bias,
             "has_bos": structure["bos"] != "none",
             "bos": structure["bos"],
             "has_choch": structure["choch"] != "none",
             "choch": structure["choch"],
             "liquidity_zone": nearest_liquidity_zone,
             "nearest_order_block": nearest_order_block,
+            "relevant_order_block": nearest_order_block,
             "relevant_fvg": relevant_fvg,
             "liquidity_sweep": liquidity_sweep,
             "false_breakout": false_breakout,
+            "inducement": inducement,
+            "institutional_zone": institutional_zones[0] if institutional_zones else None,
             "institutional_zones": institutional_zones,
             "confirmed": confirmed,
             "invalidated": invalidated,
             "score_adjustment": score_adjustment["value"],
             "reasons": score_adjustment["reasons"],
+            "confirmations": confirmations,
+            "invalidations": invalidations,
+            "explanation": explanation,
             "structure": structure,
             "order_blocks": order_blocks,
             "liquidity": liquidity_zones,
@@ -222,6 +238,49 @@ class SmartMoneyAnalyzer:
             return {"detected": True, "direction": "bearish_failed", "level": support}
         return {"detected": False, "direction": "none", "level": None}
 
+    def _inducement(self, liquidity_zones, structure):
+        if not liquidity_zones:
+            return {"detected": False, "side": "none", "zone": None}
+        last = self.df.iloc[-1]
+        body_high = max(float(last["open"]), float(last["close"]))
+        body_low = min(float(last["open"]), float(last["close"]))
+        for zone in liquidity_zones:
+            distance = self._distance_to_price(zone)
+            near_zone = distance <= 0.006
+            if zone["type"] == "buy_side" and near_zone and body_high < zone["price"] and structure["bos"] != "bullish":
+                return {"detected": True, "side": "buy_side_inducement", "zone": zone}
+            if zone["type"] == "sell_side" and near_zone and body_low > zone["price"] and structure["bos"] != "bearish":
+                return {"detected": True, "side": "sell_side_inducement", "zone": zone}
+        return {"detected": False, "side": "none", "zone": None}
+
+    def _institutional_bias(self, structure, order_block, fvg, sweep, false_breakout):
+        score = 0
+        if structure["trend"] == "bullish":
+            score += 2
+        elif structure["trend"] == "bearish":
+            score -= 2
+        if structure["bos"] == "bullish" or structure["choch"] == "bullish":
+            score += 2
+        elif structure["bos"] == "bearish" or structure["choch"] == "bearish":
+            score -= 2
+        if order_block:
+            score += 1 if order_block["type"] == "bullish" else -1
+        if fvg:
+            score += 1 if fvg["type"] == "bullish" else -1
+        if sweep.get("side") == "sell_side_sweep":
+            score += 2
+        elif sweep.get("side") == "buy_side_sweep":
+            score -= 2
+        if false_breakout.get("direction") == "bullish_failed":
+            score -= 3
+        elif false_breakout.get("direction") == "bearish_failed":
+            score += 3
+        if score >= 4:
+            return "bullish"
+        if score <= -4:
+            return "bearish"
+        return "neutral"
+
     def _institutional_zones(self, order_blocks, fair_value_gaps, liquidity_zones):
         zones = []
         for block in order_blocks[-5:]:
@@ -242,61 +301,128 @@ class SmartMoneyAnalyzer:
         reference = zone.get("mid", zone.get("price", (zone.get("high", price) + zone.get("low", price)) / 2))
         return abs(float(reference) - price) / price
 
-    def _score_adjustment(self, signal_type, structure, order_block, fvg, liquidity_zone, sweep, false_breakout):
+    def _score_adjustment(self, signal_type, structure, order_block, fvg, liquidity_zone, sweep, false_breakout, institutional_bias, inducement):
         signal = signal_type.lower()
         is_buy = any(word in signal for word in ["compra", "entrada", "buy"])
         is_sell = any(word in signal for word in ["venda", "sell"])
         value = 0
         reasons = []
+        confirmations = []
+        invalidations = []
 
         if structure["bos"] == "bullish":
             value += 8 if is_buy else -5 if is_sell else 2
-            reasons.append("BOS comprador detectado.")
+            text = "BOS comprador detectado."
+            reasons.append(text)
+            (confirmations if is_buy or not is_sell else invalidations).append(text)
         elif structure["bos"] == "bearish":
-            value -= 8 if is_sell else -5 if is_buy else 2
-            reasons.append("BOS vendedor detectado.")
+            value += 8 if is_sell else -5 if is_buy else 2
+            text = "BOS vendedor detectado."
+            reasons.append(text)
+            (confirmations if is_sell or not is_buy else invalidations).append(text)
 
         if structure["choch"] == "bullish":
             value += 10 if is_buy else -8
-            reasons.append("CHOCH comprador detectado.")
+            text = "CHOCH comprador detectado."
+            reasons.append(text)
+            (confirmations if is_buy else invalidations).append(text)
         elif structure["choch"] == "bearish":
-            value -= 10 if is_sell else -8
-            reasons.append("CHOCH vendedor detectado.")
+            value += 10 if is_sell else -8
+            text = "CHOCH vendedor detectado."
+            reasons.append(text)
+            (confirmations if is_sell else invalidations).append(text)
 
         if order_block:
             if order_block["type"] == "bullish":
                 value += 6 if is_buy else -3
-                reasons.append("Order block comprador proximo.")
+                text = "Order block comprador proximo."
+                reasons.append(text)
+                (confirmations if is_buy else invalidations if is_sell else confirmations).append(text)
             elif order_block["type"] == "bearish":
-                value -= 6 if is_sell else -3
-                reasons.append("Order block vendedor proximo.")
+                value += 6 if is_sell else -3
+                text = "Order block vendedor proximo."
+                reasons.append(text)
+                (confirmations if is_sell else invalidations if is_buy else confirmations).append(text)
 
         if fvg:
             if fvg["type"] == "bullish":
                 value += 4 if is_buy else -2
-                reasons.append("FVG comprador relevante.")
+                text = "FVG comprador relevante."
+                reasons.append(text)
+                (confirmations if is_buy else invalidations if is_sell else confirmations).append(text)
             elif fvg["type"] == "bearish":
-                value -= 4 if is_sell else -2
-                reasons.append("FVG vendedor relevante.")
+                value += 4 if is_sell else -2
+                text = "FVG vendedor relevante."
+                reasons.append(text)
+                (confirmations if is_sell else invalidations if is_buy else confirmations).append(text)
 
         if liquidity_zone:
-            reasons.append(f"Zona de liquidez {liquidity_zone['type']} proxima.")
+            text = f"Zona de liquidez {liquidity_zone['type']} proxima."
+            reasons.append(text)
+            confirmations.append(text)
 
         if sweep["detected"]:
             if sweep["side"] == "sell_side_sweep":
                 value += 8 if is_buy else -5
-                reasons.append("Sweep de liquidez vendedora favorece reversao compradora.")
+                text = "Sweep de liquidez vendedora favorece reversao compradora."
+                reasons.append(text)
+                (confirmations if is_buy else invalidations).append(text)
             elif sweep["side"] == "buy_side_sweep":
-                value -= 8 if is_sell else -5
-                reasons.append("Sweep de liquidez compradora favorece reversao vendedora.")
+                value += 8 if is_sell else -5
+                text = "Sweep de liquidez compradora favorece reversao vendedora."
+                reasons.append(text)
+                (confirmations if is_sell else invalidations).append(text)
+
+        if inducement["detected"]:
+            text = f"Inducement detectado em {inducement['side']}."
+            reasons.append(text)
+            invalidations.append(text)
+            value -= 4
+
+        if institutional_bias == "bullish" and is_buy:
+            confirmations.append("Vies institucional comprador alinhado ao sinal.")
+            value += 5
+        elif institutional_bias == "bearish" and is_sell:
+            confirmations.append("Vies institucional vendedor alinhado ao sinal.")
+            value += 5
+        elif institutional_bias in ["bullish", "bearish"] and (is_buy or is_sell):
+            invalidations.append("Vies institucional contra o sinal.")
+            value -= 7
 
         if false_breakout["detected"]:
             value -= 15
-            reasons.append("Falso rompimento invalida a leitura direcional.")
+            text = "Falso rompimento invalida a leitura direcional."
+            reasons.append(text)
+            invalidations.append(text)
 
         confirmed = value >= 8 and not false_breakout["detected"]
         invalidated = value <= -8 or false_breakout["detected"]
-        return {"value": int(max(-25, min(25, value))), "confirmed": bool(confirmed), "invalidated": bool(invalidated), "reasons": reasons}
+        return {
+            "value": int(max(-25, min(25, value))),
+            "confirmed": bool(confirmed),
+            "invalidated": bool(invalidated),
+            "reasons": reasons,
+            "confirmations": confirmations[:8],
+            "invalidations": invalidations[:8],
+        }
+
+    def _explanation(self, bias, structure, order_block, fvg, liquidity_zone, sweep, false_breakout):
+        parts = [f"Vies institucional {bias} com estrutura {structure['trend']}."]
+        if structure["bos"] != "none":
+            parts.append(f"BOS {structure['bos']} no nivel {structure.get('break_level')}.")
+        if structure["choch"] != "none":
+            parts.append(f"CHOCH {structure['choch']} indica possivel mudanca de carater.")
+        if order_block:
+            parts.append(f"Order block {order_block['type']} relevante entre {order_block['low']} e {order_block['high']}.")
+        if fvg:
+            parts.append(f"FVG {fvg['type']} relevante entre {fvg['low']} e {fvg['high']}.")
+        if liquidity_zone:
+            parts.append(f"Liquidez {liquidity_zone['type']} proxima em {liquidity_zone['price']}.")
+        if sweep.get("detected"):
+            parts.append(f"Sweep detectado: {sweep['side']}.")
+        if false_breakout.get("detected"):
+            parts.append(f"Rompimento falso em {false_breakout['level']}.")
+        return " ".join(parts)
 
 
 def analyze_smart_money(candles, signal_type="neutro"):

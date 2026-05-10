@@ -516,6 +516,17 @@
     margin-top: 10px;
 }
 
+.institutional-explanation {
+    margin-top: 10px;
+    padding: 9px;
+    background: rgba(2, 6, 23, 0.42);
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    border-radius: 4px;
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.45;
+}
+
 /* Support Resistance */
 .support-resistance-list {
     display: flex;

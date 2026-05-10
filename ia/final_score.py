@@ -4,7 +4,7 @@ Score operacional final da IA em escala 0-10.
 
 
 class FinalOperationalScore:
-    def __init__(self, technical, ai_signal, levels, smc, volume, mtf_analysis, mtf_confluence):
+    def __init__(self, technical, ai_signal, levels, smc, volume, mtf_analysis, mtf_confluence, wyckoff=None):
         self.technical = technical
         self.ai_signal = ai_signal
         self.levels = levels
@@ -12,6 +12,7 @@ class FinalOperationalScore:
         self.volume = volume
         self.mtf_analysis = mtf_analysis
         self.mtf_confluence = mtf_confluence
+        self.wyckoff = wyckoff or {}
 
     def calculate(self):
         components = {}
@@ -28,6 +29,7 @@ class FinalOperationalScore:
         components["support_resistance"] = self._support_resistance(confirmations, invalidations)
         components["volume"] = self._volume(confirmations, invalidations)
         components["smart_money"] = self._smart_money(confirmations, invalidations)
+        components["wyckoff"] = self._wyckoff(confirmations, invalidations)
         components["multi_timeframe"] = self._multi_timeframe(confirmations, invalidations)
         components["confirmation_candle"] = self._confirmation_candle(confirmations, invalidations)
         components["risk_reward"] = self._risk_reward(confirmations, invalidations)
@@ -68,7 +70,8 @@ class FinalOperationalScore:
             "atr": 0.35,
             "support_resistance": 0.55,
             "volume": 0.9,
-            "smart_money": 1.05,
+            "smart_money": 1.15,
+            "wyckoff": 0.45,
             "multi_timeframe": 1.2,
             "confirmation_candle": 0.55,
             "risk_reward": 0.95,
@@ -172,10 +175,29 @@ class FinalOperationalScore:
         if self.smc.get("confirmed"):
             confirmations.extend(self.smc.get("reasons", [])[:3] or ["Smart Money confirmou o sinal."])
             return 0.95
+        if self.smc.get("smc_score") is not None:
+            score = max(0, min(100, float(self.smc.get("smc_score", 50)))) / 100
+            confirmations.extend(self.smc.get("confirmations", [])[:2])
+            invalidations.extend(self.smc.get("invalidations", [])[:2])
+            return score
         if self.smc.get("has_bos") or self.smc.get("has_choch") or self.smc.get("nearest_order_block"):
             confirmations.append("Smart Money tem estrutura relevante proxima.")
             return 0.68
         return 0.45
+
+    def _wyckoff(self, confirmations, invalidations):
+        confirmations.extend(self.wyckoff.get("confirmations", [])[:2])
+        invalidations.extend(self.wyckoff.get("invalidations", [])[:2])
+        phase = self.wyckoff.get("phase", "indefinida")
+        if self.wyckoff.get("spring") or phase == "acumulacao":
+            return 0.78
+        if self.wyckoff.get("upthrust") or phase == "distribuicao":
+            return 0.38
+        if self.wyckoff.get("test"):
+            return 0.64
+        if self.wyckoff.get("selling_climax") or self.wyckoff.get("buying_climax"):
+            return 0.48
+        return 0.52
 
     def _multi_timeframe(self, confirmations, invalidations):
         confluence = self.mtf_confluence or {}
@@ -239,7 +261,7 @@ class FinalOperationalScore:
         return f"{classification} ({signal}) com score {score}/10. Motivo tecnico: {reason} Principal invalidacao: {invalidation}"
 
 
-def calculate_final_score(technical, ai_signal, levels, smc, volume, mtf_analysis, mtf_confluence):
+def calculate_final_score(technical, ai_signal, levels, smc, volume, mtf_analysis, mtf_confluence, wyckoff=None):
     return FinalOperationalScore(
         technical=technical,
         ai_signal=ai_signal,
@@ -248,4 +270,5 @@ def calculate_final_score(technical, ai_signal, levels, smc, volume, mtf_analysi
         volume=volume,
         mtf_analysis=mtf_analysis,
         mtf_confluence=mtf_confluence,
+        wyckoff=wyckoff,
     ).calculate()

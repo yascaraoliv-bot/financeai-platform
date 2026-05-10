@@ -281,6 +281,7 @@ class AdvancedDashboard {
 
         this.clearPriceLines();
         if (analysis?.levels) this.addTradePriceLines(analysis.levels);
+        if (analysis) this.addInstitutionalPriceLines(analysis);
         this.candleSeries.setMarkers(Array.isArray(analysis?.markers) ? analysis.markers : []);
         if (fit) this.chart.timeScale().fitContent();
     }
@@ -328,6 +329,8 @@ class AdvancedDashboard {
             },
             validation: { entry_quality: { quality: 'neutra', probability: 0, invalidated: false } },
             smc: {},
+            wyckoff: {},
+            institutional_context: {},
             volume_analysis: {},
             operational_state: {
                 state: 'neutral',
@@ -452,6 +455,29 @@ class AdvancedDashboard {
         });
     }
 
+    addInstitutionalPriceLines(analysis) {
+        const context = analysis.institutional_context || analysis || {};
+        const smc = analysis.smc || {};
+        const zones = [
+            { zone: context.relevant_order_block || smc.relevant_order_block || smc.nearest_order_block, title: 'SMC OB', color: '#a78bfa' },
+            { zone: context.relevant_fvg || smc.relevant_fvg, title: 'SMC FVG', color: '#f59e0b' },
+            { zone: context.liquidity_zone || smc.liquidity_zone, title: 'Liquidez', color: '#38bdf8' },
+        ];
+        zones.forEach((item) => {
+            const price = this.zonePrice(item.zone);
+            if (!Number.isFinite(price)) return;
+            const priceLine = this.candleSeries.createPriceLine({
+                price,
+                color: item.color,
+                lineWidth: 1,
+                lineStyle: LightweightCharts.LineStyle.Dotted,
+                axisLabelVisible: true,
+                title: item.title,
+            });
+            this.priceLines.push(priceLine);
+        });
+    }
+
     updateAnalysisPanel(analysis, candlesPayload) {
         analysis = analysis || this.createNeutralAnalysis(candlesPayload);
         const signal = analysis.signal || {};
@@ -534,26 +560,48 @@ class AdvancedDashboard {
 
     updateInstitutionalPanels(analysis) {
         const smc = analysis.smc || {};
+        const wyckoff = analysis.wyckoff || {};
+        const context = analysis.institutional_context || {};
         const structure = smc.structure || {};
         const validation = analysis.validation || {};
         const quality = validation.entry_quality || {};
         const scenario = analysis.scenario || {};
+        const falseBreakout = context.false_breakout || smc.false_breakout || {};
 
         this.setText('entryQuality', quality.quality || '--');
         this.setText('probabilityScore', quality.probability ? `${quality.probability}%` : '--');
         this.setText('scenarioAction', scenario.action || '--');
         this.setText('invalidatedState', quality.invalidated ? 'SIM' : 'NAO');
+        this.setText('institutionalSmcScore', `${context.smc_score ?? smc.smc_score ?? '--'}`);
+        this.setText('institutionalWyckoffPhase', context.wyckoff_phase || wyckoff.phase || '--');
+        this.setText('institutionalBias', context.institutional_bias || smc.institutional_bias || '--');
+        this.setText('institutionalBreakout', falseBreakout.detected ? `FALSO ${falseBreakout.direction || ''}` : 'REAL/NAO CONFIRMADO');
+        this.setText('institutionalExplanation', context.explanation || smc.explanation || wyckoff.explanation || '--');
         this.setText('smcBos', structure.bos || '--');
         this.setText('smcChoch', structure.choch || '--');
-        this.setText('smcLiquidityZone', this.formatSmartMoneyZone(smc.liquidity_zone));
-        this.setText('smcNearestOb', this.formatSmartMoneyZone(smc.nearest_order_block));
-        this.setText('smcRelevantFvg', this.formatSmartMoneyZone(smc.relevant_fvg));
+        this.setText('smcLiquidityZone', this.formatSmartMoneyZone(context.liquidity_zone || smc.liquidity_zone));
+        this.setText('smcNearestOb', this.formatSmartMoneyZone(context.relevant_order_block || smc.relevant_order_block || smc.nearest_order_block));
+        this.setText('smcRelevantFvg', this.formatSmartMoneyZone(context.relevant_fvg || smc.relevant_fvg));
         this.setText('smcConfirmed', smc.confirmed ? 'SIM' : 'NAO');
         this.setText('smcInvalidated', smc.invalidated ? 'SIM' : 'NAO');
         this.setText('smcSweep', smc.liquidity_sweep?.detected ? smc.liquidity_sweep.side : 'NAO');
         this.setText('lateralState', validation.lateralization?.detected ? 'SIM' : 'NAO');
+        this.updateWyckoffPanel(wyckoff);
         this.updateVolumeInstitutionalPanel(analysis.volume_analysis || {});
         this.setOperationalState(analysis.operational_state || {});
+    }
+
+    updateWyckoffPanel(wyckoff) {
+        this.setText('wyckoffPhase', wyckoff.phase || '--');
+        this.setText('wyckoffBias', wyckoff.bias || '--');
+        this.setText('wyckoffAccumulation', wyckoff.accumulation ? 'SIM' : 'NAO');
+        this.setText('wyckoffDistribution', wyckoff.distribution ? 'SIM' : 'NAO');
+        this.setText('wyckoffSpring', wyckoff.spring ? 'SIM' : 'NAO');
+        this.setText('wyckoffUpthrust', wyckoff.upthrust ? 'SIM' : 'NAO');
+        this.setText('wyckoffSellingClimax', wyckoff.selling_climax ? 'SIM' : 'NAO');
+        this.setText('wyckoffBuyingClimax', wyckoff.buying_climax ? 'SIM' : 'NAO');
+        this.setText('wyckoffTest', wyckoff.test ? 'SIM' : 'NAO');
+        this.setText('wyckoffVolumeRatio', wyckoff.volume_ratio ? `${wyckoff.volume_ratio}x` : '--');
     }
 
     setOperationalState(state) {
@@ -611,8 +659,13 @@ class AdvancedDashboard {
     formatSmartMoneyZone(zone) {
         if (!zone) return '--';
         const label = zone.kind || zone.type || 'zona';
-        const value = zone.mid || zone.price || zone.high || zone.low;
+        const value = this.zonePrice(zone);
         return `${label} ${this.formatPrice(value)}`;
+    }
+
+    zonePrice(zone) {
+        if (!zone) return NaN;
+        return Number(zone.mid ?? zone.price ?? zone.high ?? zone.low);
     }
 
     updateGauge(score) {

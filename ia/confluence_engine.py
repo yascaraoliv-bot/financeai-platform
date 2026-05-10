@@ -35,10 +35,10 @@ class ConfluenceEngine:
             "trend": 0.13,
             "volume": 0.11,
             "momentum": 0.10,
-            "smart_money": 0.15,
+            "smart_money": 0.17,
             "price_action": 0.12,
             "indicators": 0.13,
-            "multi_timeframe": 0.16,
+            "multi_timeframe": 0.14,
             "risk_reward": 0.07,
             "wyckoff": 0.03,
         }
@@ -110,6 +110,13 @@ class ConfluenceEngine:
             return {"score": 18, "confirmations": [], "invalidations": self.smc.get("reasons", ["SMC invalidou o cenario."])[:4]}
         if self.smc.get("confirmed"):
             return {"score": 90, "confirmations": self.smc.get("reasons", ["SMC confirma o cenario."])[:4], "invalidations": []}
+        if self.smc.get("smc_score") is not None:
+            score = int(max(0, min(100, self.smc.get("smc_score", 50))))
+            return {
+                "score": score,
+                "confirmations": self.smc.get("confirmations", [])[:4],
+                "invalidations": self.smc.get("invalidations", [])[:4],
+            }
         if self.smc.get("has_bos") or self.smc.get("has_choch") or self.smc.get("nearest_order_block"):
             return {"score": 65, "confirmations": ["SMC possui zona/estrutura relevante."], "invalidations": []}
         return {"score": 45, "confirmations": [], "invalidations": ["SMC sem gatilho claro."]}
@@ -151,6 +158,8 @@ class ConfluenceEngine:
 
     def _wyckoff(self):
         phase = self.wyckoff.get("phase", "indefinida")
+        if self.wyckoff.get("invalidations"):
+            return {"score": 42, "confirmations": self.wyckoff.get("confirmations", [])[:2], "invalidations": self.wyckoff.get("invalidations", [])[:3]}
         if self.wyckoff.get("spring") or self.wyckoff.get("upthrust"):
             return {"score": 78, "confirmations": [f"Wyckoff: {phase}."], "invalidations": []}
         if self.wyckoff.get("accumulation") or self.wyckoff.get("distribution"):

@@ -108,20 +108,28 @@ def default_signal(df):
 
 def default_smc():
     return {
+        "smc_score": 50,
+        "institutional_bias": "neutral",
         "has_bos": False,
         "bos": "none",
         "has_choch": False,
         "choch": "none",
         "liquidity_zone": None,
         "nearest_order_block": None,
+        "relevant_order_block": None,
         "relevant_fvg": None,
         "liquidity_sweep": {"detected": False, "side": "none", "zone": None},
         "false_breakout": {"detected": False, "direction": "none", "level": None},
+        "inducement": {"detected": False, "side": "none", "zone": None},
+        "institutional_zone": None,
         "institutional_zones": [],
         "confirmed": False,
         "invalidated": False,
         "score_adjustment": 0,
         "reasons": [],
+        "confirmations": [],
+        "invalidations": [],
+        "explanation": "Smart Money sem leitura suficiente.",
         "structure": {"trend": "neutral", "bos": "none", "choch": "none"},
         "order_blocks": [],
         "liquidity": [],
@@ -204,15 +212,46 @@ def default_final_score(levels=None):
 def default_wyckoff():
     return {
         "phase": "indefinida",
+        "wyckoff_phase": "indefinida",
+        "probable_market_phase": "indefinida",
         "bias": "neutral",
         "accumulation": False,
         "distribution": False,
         "spring": False,
         "upthrust": False,
         "climax": False,
+        "selling_climax": False,
+        "buying_climax": False,
         "test": False,
         "range": {},
         "volume_ratio": 0,
+        "score_adjustment": 0,
+        "confirmations": [],
+        "invalidations": [],
+        "explanation": "Wyckoff sem leitura suficiente.",
+    }
+
+
+def build_institutional_payload(smc, wyckoff):
+    smc = smc or default_smc()
+    wyckoff = wyckoff or default_wyckoff()
+    confirmations = list(smc.get("confirmations") or [])
+    confirmations.extend(wyckoff.get("confirmations") or [])
+    invalidations = list(smc.get("invalidations") or [])
+    invalidations.extend(wyckoff.get("invalidations") or [])
+    explanation_parts = [text for text in [smc.get("explanation"), wyckoff.get("explanation")] if text]
+    return {
+        "smc_score": smc.get("smc_score", 50),
+        "wyckoff_phase": wyckoff.get("wyckoff_phase") or wyckoff.get("phase", "indefinida"),
+        "institutional_bias": smc.get("institutional_bias", wyckoff.get("bias", "neutral")),
+        "relevant_order_block": smc.get("relevant_order_block") or smc.get("nearest_order_block"),
+        "relevant_fvg": smc.get("relevant_fvg"),
+        "liquidity_zone": smc.get("liquidity_zone"),
+        "liquidity_sweep": smc.get("liquidity_sweep", {"detected": False, "side": "none", "zone": None}),
+        "false_breakout": smc.get("false_breakout", {"detected": False, "direction": "none", "level": None}),
+        "confirmations": confirmations[:12],
+        "invalidations": invalidations[:12],
+        "explanation": " ".join(explanation_parts) or "Sem contexto institucional dominante.",
     }
 
 
@@ -296,7 +335,7 @@ def build_analysis(symbol, timeframe, limit=500):
         wyckoff = read_wyckoff(df)
     except Exception:
         wyckoff = default_wyckoff()
-    score = int(max(0, min(100, score + volume_analysis.get("score_adjustment", 0))))
+    score = int(max(0, min(100, score + volume_analysis.get("score_adjustment", 0) + wyckoff.get("score_adjustment", 0))))
     try:
         validation = OperationalValidator(df, signal, levels, smc).validate()
     except Exception:
@@ -614,6 +653,7 @@ def get_analysis(symbol, timeframe):
                 volume=volume_analysis,
                 mtf_analysis=mtf_analysis,
                 mtf_confluence=mtf_confluence,
+                wyckoff=wyckoff,
             )
         except Exception:
             final_score = default_final_score(levels)
@@ -647,6 +687,7 @@ def get_analysis(symbol, timeframe):
             levels=levels,
             operational_state=operational_state,
         )
+        institutional_payload = build_institutional_payload(smc, wyckoff)
 
         response = {
             "success": True,
@@ -661,6 +702,18 @@ def get_analysis(symbol, timeframe):
             "smc": smc,
             "volume_analysis": volume_analysis,
             "wyckoff": wyckoff,
+            "institutional_context": institutional_payload,
+            "smc_score": institutional_payload["smc_score"],
+            "wyckoff_phase": institutional_payload["wyckoff_phase"],
+            "institutional_bias": institutional_payload["institutional_bias"],
+            "relevant_order_block": institutional_payload["relevant_order_block"],
+            "relevant_fvg": institutional_payload["relevant_fvg"],
+            "liquidity_zone": institutional_payload["liquidity_zone"],
+            "liquidity_sweep": institutional_payload["liquidity_sweep"],
+            "false_breakout": institutional_payload["false_breakout"],
+            "confirmations": institutional_payload["confirmations"],
+            "invalidations": institutional_payload["invalidations"],
+            "explanation": institutional_payload["explanation"],
             "multi_timeframe": {
                 "analysis": mtf_analysis,
                 "confluence": mtf_confluence,
@@ -688,6 +741,7 @@ def get_analysis(symbol, timeframe):
         analysis_response_cache.set(cache_key, response)
         return jsonify(sanitize_json(response))
     except Exception as error:
+        institutional_payload = build_institutional_payload(default_smc(), default_wyckoff())
         return jsonify(sanitize_json({
             "success": False,
             "error": str(error),
@@ -697,6 +751,18 @@ def get_analysis(symbol, timeframe):
             "smc": default_smc(),
             "volume_analysis": default_volume(),
             "wyckoff": default_wyckoff(),
+            "institutional_context": institutional_payload,
+            "smc_score": institutional_payload["smc_score"],
+            "wyckoff_phase": institutional_payload["wyckoff_phase"],
+            "institutional_bias": institutional_payload["institutional_bias"],
+            "relevant_order_block": institutional_payload["relevant_order_block"],
+            "relevant_fvg": institutional_payload["relevant_fvg"],
+            "liquidity_zone": institutional_payload["liquidity_zone"],
+            "liquidity_sweep": institutional_payload["liquidity_sweep"],
+            "false_breakout": institutional_payload["false_breakout"],
+            "confirmations": institutional_payload["confirmations"],
+            "invalidations": institutional_payload["invalidations"],
+            "explanation": institutional_payload["explanation"],
             "validation": default_validation(),
             "technical_reader": default_technical(None),
             "final_score": default_final_score({}),
