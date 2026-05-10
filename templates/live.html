@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+
+{% block title %}Live Trading IA - FinanceAI{% endblock %}
+
+{% block content %}
+<div class="live-shell">
+    <div class="risk-disclaimer">
+        Analise educativa. Nao e recomendacao financeira. Toda operacao envolve risco.
+    </div>
+
+    <div class="live-toolbar">
+        <div class="asset-timeframe-selector">
+            <select id="liveAssetSelect" class="form-control-premium">
+                <option value="BTCUSDT">BTCUSDT - Bitcoin</option>
+            </select>
+            <div class="timeframe-buttons">
+                <button class="tf-btn" data-live-tf="1m">1m</button>
+                <button class="tf-btn" data-live-tf="5m">5m</button>
+                <button class="tf-btn active" data-live-tf="15m">15m</button>
+                <button class="tf-btn" data-live-tf="1h">1h</button>
+                <button class="tf-btn" data-live-tf="4h">4h</button>
+            </div>
+        </div>
+        <div class="live-market-strip">
+            <div><span>Preco</span><strong id="livePrice">--</strong></div>
+            <div><span>Candle</span><strong id="liveCountdown">--</strong></div>
+            <div><span>Mercado</span><strong id="liveMarketStatus">--</strong></div>
+            <div><span>Conexao</span><strong id="liveConnection">--</strong></div>
+        </div>
+    </div>
+
+    <div class="live-grid">
+        <section class="live-chart-panel">
+            <div class="chart-header-pro">
+                <h3>Live Trading IA - <span id="liveChartTitle">BTCUSDT · 15m</span></h3>
+                <div class="chart-tools">
+                    <button class="chart-tool-btn" id="liveSoundToggle" title="Alertas sonoros">
+                        <i class="fas fa-volume-mute"></i>
+                    </button>
+                    <button class="chart-tool-btn" id="liveFitChart" title="Ajustar grafico">
+                        <i class="fas fa-redo"></i>
+                    </button>
+                </div>
+            </div>
+            <div id="liveChart" class="live-chart"></div>
+        </section>
+
+        <aside class="live-ia-panel">
+            <div class="live-status-card" id="liveStatusCard">
+                <span>Status Operacional</span>
+                <strong id="liveOperationalStatus">ANALISANDO</strong>
+                <p id="liveMainMessage">Analisando estrutura do mercado...</p>
+            </div>
+
+            <div class="live-metrics-grid">
+                <div><span>Score</span><strong id="liveScore">--</strong></div>
+                <div><span>Confianca</span><strong id="liveConfidence">--</strong></div>
+                <div><span>Direcao</span><strong id="liveDirection">--</strong></div>
+                <div><span>Tendencia</span><strong id="liveTrendStrength">--</strong></div>
+                <div><span>Volume</span><strong id="liveVolumeStrength">--</strong></div>
+                <div><span>R/R</span><strong id="liveRiskReward">--</strong></div>
+            </div>
+
+            <div class="analysis-card live-levels-card">
+                <div class="card-title">Niveis Operacionais</div>
+                <div class="risk-levels">
+                    <div class="level"><span class="level-name">Entrada Ag.</span><span class="level-price" id="liveAggressiveEntry">--</span></div>
+                    <div class="level"><span class="level-name">Entrada Cons.</span><span class="level-price" id="liveConservativeEntry">--</span></div>
+                    <div class="level"><span class="level-name">Stop</span><span class="level-price" id="liveStopLoss">--</span></div>
+                    <div class="level"><span class="level-name">Take</span><span class="level-price" id="liveTakeProfit">--</span></div>
+                </div>
+            </div>
+
+            <div class="analysis-card">
+                <div class="card-title">Motivo da IA</div>
+                <div class="live-reason" id="liveReason">--</div>
+            </div>
+
+            <div class="analysis-card">
+                <div class="card-title">Mensagens da Mesa</div>
+                <div class="live-message-feed" id="liveMessageFeed"></div>
+            </div>
+
+            <div class="analysis-card">
+                <div class="card-title">Invalidacoes</div>
+                <div class="live-invalidations" id="liveInvalidations"></div>
+            </div>
+        </aside>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://unpkg.com/lightweight-charts@3/dist/lightweight-charts.standalone.production.js"></script>
+<script src="{{ url_for('static', filename='js/live-trading.js') }}"></script>
+{% endblock %}

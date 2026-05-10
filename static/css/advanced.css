@@ -190,6 +190,21 @@
     background-color: rgba(0, 212, 255, 0.1);
 }
 
+.chart-tool-link {
+    min-height: 32px;
+    padding: 0 10px;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    border: 1px solid rgba(56, 189, 248, 0.35);
+    border-radius: 4px;
+    color: var(--accent-blue);
+    background: rgba(56, 189, 248, 0.10);
+    text-decoration: none;
+    font-size: 12px;
+    font-weight: 700;
+}
+
 #chart-container {
     flex: 1;
     min-height: 0;
@@ -525,6 +540,218 @@
     color: var(--text-secondary);
     font-size: 11px;
     line-height: 1.45;
+}
+
+/* ========================================
+   LIVE TRADING IA
+   ======================================== */
+
+.live-shell {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-height: 100%;
+    padding: 16px;
+    background:
+        radial-gradient(circle at 20% 0%, rgba(56, 189, 248, 0.08), transparent 28%),
+        radial-gradient(circle at 80% 8%, rgba(34, 197, 94, 0.06), transparent 24%),
+        #05070d;
+}
+
+.live-toolbar,
+.live-chart-panel,
+.live-ia-panel > .analysis-card,
+.live-status-card {
+    background: rgba(12, 18, 30, 0.88);
+    border: 1px solid rgba(148, 163, 184, 0.17);
+    border-radius: 8px;
+    box-shadow: 0 18px 60px rgba(0, 0, 0, 0.26);
+}
+
+.live-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 14px;
+    padding: 14px;
+}
+
+.live-market-strip {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(110px, 1fr));
+    gap: 10px;
+}
+
+.live-market-strip div,
+.live-metrics-grid div {
+    min-width: 0;
+    padding: 9px 10px;
+    background: rgba(2, 6, 23, 0.45);
+    border: 1px solid rgba(148, 163, 184, 0.13);
+    border-radius: 6px;
+}
+
+.live-market-strip span,
+.live-metrics-grid span,
+.live-status-card span {
+    display: block;
+    color: var(--text-secondary);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.live-market-strip strong,
+.live-metrics-grid strong {
+    display: block;
+    margin-top: 4px;
+    color: var(--text-primary);
+    font-size: 15px;
+}
+
+.live-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 2.2fr) minmax(360px, 0.9fr);
+    gap: 14px;
+    min-height: 720px;
+}
+
+.live-chart-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 14px;
+    min-width: 0;
+}
+
+.live-chart {
+    flex: 1;
+    min-height: 620px;
+    width: 100%;
+}
+
+.live-ia-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+}
+
+.live-status-card {
+    padding: 16px;
+    border-left: 4px solid var(--accent-yellow);
+}
+
+.live-status-card strong {
+    display: block;
+    margin-top: 7px;
+    color: var(--accent-yellow);
+    font-size: 22px;
+    line-height: 1.1;
+}
+
+.live-status-card p {
+    margin: 10px 0 0;
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+.live-status-card.is-loading {
+    opacity: 0.78;
+}
+
+.live-status-card[data-state="BUY_CONFIRMED"],
+.live-status-card[data-state="AGGRESSIVE_ENTRY"],
+.live-status-card[data-state="CONSERVATIVE_ENTRY"] {
+    border-left-color: var(--accent-green);
+}
+
+.live-status-card[data-state="BUY_CONFIRMED"] strong,
+.live-status-card[data-state="AGGRESSIVE_ENTRY"] strong,
+.live-status-card[data-state="CONSERVATIVE_ENTRY"] strong {
+    color: var(--accent-green);
+}
+
+.live-status-card[data-state="SELL_CONFIRMED"],
+.live-status-card[data-state="INVALIDATED"],
+.live-status-card[data-state="HIGH_RISK"] {
+    border-left-color: var(--accent-red);
+}
+
+.live-status-card[data-state="SELL_CONFIRMED"] strong,
+.live-status-card[data-state="INVALIDATED"] strong,
+.live-status-card[data-state="HIGH_RISK"] strong {
+    color: var(--accent-red);
+}
+
+.live-status-card[data-state="SIDEWAYS"],
+.live-status-card[data-state="WEAK_VOLUME"],
+.live-status-card[data-state="WAIT_NEXT_CANDLE"] {
+    border-left-color: #94a3b8;
+}
+
+.live-status-card[data-state="SIDEWAYS"] strong,
+.live-status-card[data-state="WEAK_VOLUME"] strong,
+.live-status-card[data-state="WAIT_NEXT_CANDLE"] strong {
+    color: #cbd5e1;
+}
+
+.live-metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.live-levels-card {
+    padding: 14px;
+}
+
+.live-reason {
+    padding: 9px;
+    color: var(--text-secondary);
+    background: rgba(2, 6, 23, 0.42);
+    border: 1px solid rgba(148, 163, 184, 0.12);
+    border-radius: 4px;
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.live-message-feed,
+.live-invalidations {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    max-height: 210px;
+    overflow: auto;
+}
+
+.live-message-row,
+.live-invalidation-row {
+    display: grid;
+    grid-template-columns: 14px 1fr;
+    gap: 8px;
+    padding: 8px;
+    background: rgba(2, 6, 23, 0.42);
+    border-left: 2px solid var(--accent-green);
+    border-radius: 4px;
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+.live-message-row i {
+    margin-top: 3px;
+    color: var(--accent-green);
+    font-size: 8px;
+}
+
+.live-invalidation-row {
+    border-left-color: var(--accent-red);
+}
+
+.live-invalidation-row i {
+    margin-top: 2px;
+    color: var(--accent-red);
 }
 
 /* Support Resistance */
@@ -1229,6 +1456,15 @@
         grid-template-columns: repeat(2, minmax(0, 1fr));
         overflow: visible;
     }
+
+    .live-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .live-ia-panel {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
 }
 
 @media (max-width: 1100px) {
@@ -1259,5 +1495,20 @@
     .detailed-analysis > .detailed-card:nth-child(5),
     .detailed-analysis > .detailed-card:nth-child(6) {
         grid-column: 1 / -1;
+    }
+
+    .live-toolbar {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .live-market-strip,
+    .live-ia-panel,
+    .live-metrics-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .live-chart {
+        min-height: 460px;
     }
 }

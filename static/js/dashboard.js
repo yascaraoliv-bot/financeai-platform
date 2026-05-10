@@ -111,6 +111,10 @@ function handleNewAlert() {
 }
 
 function handleNavigation(e) {
+    const href = this.getAttribute('href');
+    if (href && href !== '#') {
+        return;
+    }
     e.preventDefault();
     
     // Remover classe active de todos os itens

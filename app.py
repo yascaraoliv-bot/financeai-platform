@@ -18,6 +18,7 @@ from ia.confluence_engine import DISCLAIMER, build_confluence_analysis
 from ia.data_generator import generate_realistic_data
 from ia.final_score import calculate_final_score
 from ia.institutional import OperationalValidator, PatternLearner, ProfessionalBacktest
+from ia.live_trading import build_live_status
 from ia.operational_signal import build_operational_signal
 from ia.smart_money import analyze_smart_money
 from ia.technical_reader import read_technical
@@ -49,6 +50,7 @@ ticker_cache = TimedCache(ttl_seconds=8)
 chart_payload_cache = TimedCache(ttl_seconds=8)
 analysis_response_cache = TimedCache(ttl_seconds=10)
 analysis_core_cache = TimedCache(ttl_seconds=10)
+live_status_cache = TimedCache(ttl_seconds=3)
 
 SUPPORTED_TIMEFRAMES = ["1m", "5m", "15m", "1h", "4h", "1d", "1w"]
 HEATMAP_TIMEFRAMES = ["5m", "15m", "1h", "4h", "1d"]
@@ -531,6 +533,12 @@ def advanced():
     return render_template("advanced.html")
 
 
+@app.route("/live")
+@login_required
+def live():
+    return render_template("live.html")
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
@@ -841,6 +849,49 @@ def get_multi_timeframe(symbol):
         })
     except Exception as error:
         return jsonify({"success": False, "error": str(error)}), 400
+
+
+@app.route("/api/live/status/<symbol>/<timeframe>")
+@login_required
+def api_live_status(symbol, timeframe):
+    symbol = normalize_symbol(symbol)
+    timeframe = normalize_timeframe(timeframe)
+    cache_key = f"live:{symbol}:{timeframe}"
+    cached = live_status_cache.get(cache_key)
+    if cached is not None:
+        return jsonify(sanitize_json(cached))
+    try:
+        df = load_market_data(symbol, timeframe, 260)
+        ticker = get_ticker(symbol)
+        status = build_live_status(df, symbol, timeframe, ticker)
+        live_status_cache.set(cache_key, status)
+        return jsonify(sanitize_json(status))
+    except Exception as error:
+        fallback = {
+            "success": False,
+            "error": str(error),
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "state": "ANALYZING",
+            "status": "ANALISANDO",
+            "message": "IA recalculando. Grafico permanece ativo.",
+            "messages": ["Analisando estrutura do mercado...", "Se a IA falhar, mantenha o grafico como referencia visual."],
+            "confluence_score": 0,
+            "confidence": 0,
+            "probable_direction": "NEUTRAL",
+            "trend_strength": 0,
+            "volume_strength": 0,
+            "risk_reward": 0,
+            "entry_aggressive": None,
+            "entry_conservative": None,
+            "stop_loss": None,
+            "take_profit": None,
+            "reason": "Leitura live indisponivel no momento.",
+            "invalidations": ["IA live indisponivel temporariamente."],
+            "alerts": [],
+            "disclaimer": "Analise educativa. Nao e recomendacao financeira. Toda operacao envolve risco.",
+        }
+        return jsonify(sanitize_json(fallback)), 200
 
 
 @app.route("/api/heatmap")

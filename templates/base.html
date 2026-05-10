@@ -26,9 +26,13 @@
             </div>
             
             <nav class="sidebar-nav">
-                <a href="#" class="nav-item active" data-page="dashboard">
+                <a href="{{ url_for('advanced') }}" class="nav-item {% if request.path != '/live' %}active{% endif %}" data-page="dashboard">
                     <i class="fas fa-home"></i>
                     <span>Dashboard</span>
+                </a>
+                <a href="{{ url_for('live') }}" class="nav-item {% if request.path == '/live' %}active{% endif %}" data-page="live">
+                    <i class="fas fa-bolt"></i>
+                    <span>Live Trading IA</span>
                 </a>
                 <a href="#" class="nav-item" data-page="análise">
                     <i class="fas fa-chart-bar"></i>
