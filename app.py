@@ -23,11 +23,14 @@ from ia.live_signals import LiveSignalManager
 from ia.market_data_router import MarketDataRouter
 from ia.operational_signal import build_operational_signal
 from ia.operacional_reader import build_candle_flow, build_operacional_context, build_operacional_reading
+from ia.operacional_replay import OperacionalReplayEngine
 from ia.replay_engine import ReplayEngine
 from ia.smart_money import analyze_smart_money
 from ia.technical_reader import read_technical
+from ia.elliott_wave import read_elliott_wave
+from ia.tape_reading import read_tape
 from ia.volume_reader import read_volume
-from ia.wyckoff import read_wyckoff
+from ia.wyckoff_reader import read_wyckoff_advanced
 from ia.user_store import (
     add_watchlist,
     authenticate,
@@ -57,6 +60,7 @@ analysis_core_cache = TimedCache(ttl_seconds=10)
 live_status_cache = TimedCache(ttl_seconds=3)
 live_signal_manager = LiveSignalManager()
 replay_engine = ReplayEngine()
+operacional_replay_engine = OperacionalReplayEngine()
 
 SUPPORTED_TIMEFRAMES = ["1m", "5m", "15m", "1h", "4h", "1d", "1w"]
 HEATMAP_TIMEFRAMES = ["5m", "15m", "1h", "4h", "1d"]
@@ -240,6 +244,96 @@ def default_wyckoff():
     }
 
 
+def default_elliott_wave():
+    return {
+        "wave_count": {},
+        "current_wave": "indefinida",
+        "wave_bias": "neutral",
+        "impulse_structure": {"detected": False, "quality": 0, "direction": "neutral"},
+        "corrective_structure": {"detected": False, "pattern": "indefinido", "quality": 0},
+        "confidence": 0,
+        "reversal_risk": "indefinido",
+        "possible_stage": "indefinida",
+        "confirmations": [],
+        "invalidations": ["Elliott Wave indisponivel."],
+        "score_adjustment": 0,
+        "explanation": "Elliott Wave sem leitura suficiente.",
+    }
+
+
+def default_tape_reading():
+    return {
+        "source": "fallback_unavailable",
+        "order_flow_bias": "BALANCED_FLOW",
+        "buy_aggression": 0,
+        "sell_aggression": 0,
+        "absorption": {"detected": False, "side": "NONE"},
+        "imbalance": 0,
+        "pressure": "equilibrada",
+        "aggressor_volume": 0,
+        "flow_score": 50,
+        "confirmations": [],
+        "invalidations": ["Tape reading indisponivel."],
+        "score_adjustment": 0,
+        "metrics": {},
+        "explanation": "Fluxo sem dados suficientes.",
+    }
+
+
+def build_advanced_confluence(score, technical, smc, volume, mtf_confluence, wyckoff, elliott_wave, tape_reading, levels):
+    def norm(value, default=50):
+        try:
+            return max(0, min(100, float(value)))
+        except Exception:
+            return default
+
+    technical_score = norm(technical.get("score", score))
+    smc_score = norm(smc.get("smc_score", 50))
+    volume_score = norm(volume.get("confidence", 50))
+    tape_score = norm(tape_reading.get("flow_score", 50))
+    volume_flow_score = (volume_score * 0.45) + (tape_score * 0.55)
+    mtf_score = 85 if mtf_confluence.get("strong_signal_allowed") else norm(mtf_confluence.get("average_strength", 45))
+    wyckoff_score = (norm(wyckoff.get("accumulation_score", 50)) + (100 - norm(wyckoff.get("distribution_score", 50)))) / 2
+    elliott_score = norm(elliott_wave.get("confidence", 35))
+    rr = levels.get("risco_retorno", 0)
+    risk_score = 88 if rr >= 1.8 else 68 if rr >= 1.2 else 35
+    weights = {
+        "technical_indicators": 0.25,
+        "smart_money": 0.20,
+        "volume_flow": 0.20,
+        "multi_timeframe": 0.15,
+        "wyckoff": 0.10,
+        "elliott_wave": 0.05,
+        "risk_reward": 0.05,
+    }
+    components = {
+        "technical_indicators": round(technical_score, 2),
+        "smart_money": round(smc_score, 2),
+        "volume_flow": round(volume_flow_score, 2),
+        "multi_timeframe": round(mtf_score, 2),
+        "wyckoff": round(wyckoff_score, 2),
+        "elliott_wave": round(elliott_score, 2),
+        "risk_reward": round(risk_score, 2),
+    }
+    advanced_score = round(sum(components[key] * weights[key] for key in weights), 2)
+    confirmations = []
+    invalidations = []
+    for block in [wyckoff, elliott_wave, tape_reading]:
+        confirmations.extend(block.get("confirmations", [])[:3])
+        invalidations.extend(block.get("invalidations", [])[:3])
+    return {
+        "score": advanced_score,
+        "weights": weights,
+        "components": components,
+        "confirmations": confirmations[:10],
+        "invalidations": invalidations[:10],
+        "explanation": (
+            f"Confluencia avancada {advanced_score}/100 com Wyckoff {wyckoff.get('wyckoff_phase', '--')}, "
+            f"Elliott {elliott_wave.get('current_wave', '--')} e fluxo {tape_reading.get('order_flow_bias', '--')}."
+        ),
+    }
+
+
 def build_institutional_payload(smc, wyckoff):
     smc = smc or default_smc()
     wyckoff = wyckoff or default_wyckoff()
@@ -299,6 +393,35 @@ def get_cached_chart_payload(symbol, timeframe, limit):
     return chart_payload_cache.set(key, result)
 
 
+def operacional_chart_payload(df, symbol, timeframe):
+    candles = []
+    for idx, row in df.tail(500).iterrows():
+        timestamp = int(idx.timestamp()) if hasattr(idx, "timestamp") else len(candles)
+        candles.append({
+            "time": timestamp,
+            "open": float(row.open),
+            "high": float(row.high),
+            "low": float(row.low),
+            "close": float(row.close),
+        })
+    return {
+        "success": True,
+        "module": "operacional_leitura_grafica",
+        "isolated": True,
+        "symbol": symbol,
+        "timeframe": timeframe,
+        "operacional_chart": {
+            "candles": candles,
+            "overlays": {},
+            "indicators": [],
+        },
+        "candles": candles,
+        "overlays": {},
+        "indicators": [],
+        "message": "Candles puros para leitura grafica operacional, sem indicadores padrao.",
+    }
+
+
 def build_analysis(symbol, timeframe, limit=500):
     symbol = normalize_symbol(symbol)
     timeframe = normalize_timeframe(timeframe)
@@ -342,10 +465,23 @@ def build_analysis(symbol, timeframe, limit=500):
     except Exception:
         volume_analysis = default_volume()
     try:
-        wyckoff = read_wyckoff(df)
+        wyckoff = read_wyckoff_advanced(df)
     except Exception:
         wyckoff = default_wyckoff()
-    score = int(max(0, min(100, score + volume_analysis.get("score_adjustment", 0) + wyckoff.get("score_adjustment", 0))))
+    try:
+        elliott_wave = read_elliott_wave(df)
+    except Exception:
+        elliott_wave = default_elliott_wave()
+    try:
+        tape_reading = read_tape(df)
+    except Exception:
+        tape_reading = default_tape_reading()
+    score = int(max(0, min(100, score
+        + volume_analysis.get("score_adjustment", 0)
+        + wyckoff.get("score_adjustment", 0)
+        + elliott_wave.get("score_adjustment", 0)
+        + tape_reading.get("score_adjustment", 0)
+    )))
     try:
         validation = OperationalValidator(df, signal, levels, smc).validate()
     except Exception:
@@ -356,7 +492,7 @@ def build_analysis(symbol, timeframe, limit=500):
         validation["entry_quality"]["probability"] = min(validation["entry_quality"]["probability"], 42)
     elif smc.get("confirmed"):
         validation["entry_quality"]["probability"] = min(95, validation["entry_quality"]["probability"] + 8)
-    result = (df, ta, signal, levels, patterns, score, smc, validation, volume_analysis, wyckoff)
+    result = (df, ta, signal, levels, patterns, score, smc, validation, volume_analysis, wyckoff, elliott_wave, tape_reading)
     return analysis_core_cache.set(cache_key, result)
 
 
@@ -386,7 +522,7 @@ def build_multi_timeframe(symbol, timeframes=None):
 
     for timeframe in timeframes:
         try:
-            df, _, signal, _, _, score, _, validation, volume_analysis, _ = build_analysis(symbol, timeframe, limit=500)
+            df, _, signal, _, _, score, _, validation, volume_analysis, _, _, _ = build_analysis(symbol, timeframe, limit=500)
         except Exception:
             df = load_market_data(DEFAULT_SYMBOL, timeframe, 500)
             signal = default_signal(df)
@@ -673,11 +809,12 @@ def get_analysis(symbol, timeframe):
     symbol = normalize_symbol(symbol)
     timeframe = normalize_timeframe(timeframe)
     cache_key = f"analysis:{symbol}:{timeframe}"
-    cached = analysis_response_cache.get(cache_key)
+    force_refresh = request.args.get("refresh") is not None
+    cached = None if force_refresh else analysis_response_cache.get(cache_key)
     if cached is not None:
         return jsonify(sanitize_json(cached))
     try:
-        df, ta, signal, levels, patterns, score, smc, validation, volume_analysis, wyckoff = build_analysis(symbol, timeframe)
+        df, ta, signal, levels, patterns, score, smc, validation, volume_analysis, wyckoff, elliott_wave, tape_reading = build_analysis(symbol, timeframe)
         ticker = get_ticker(symbol)
         market_meta = market.last_meta(symbol)
         current_price = float(df["close"].iloc[-1])
@@ -714,6 +851,8 @@ def get_analysis(symbol, timeframe):
                 mtf_analysis=mtf_analysis,
                 mtf_confluence=mtf_confluence,
                 wyckoff=wyckoff,
+                elliott_wave=elliott_wave,
+                tape_reading=tape_reading,
             )
         except Exception:
             final_score = default_final_score(levels)
@@ -748,6 +887,17 @@ def get_analysis(symbol, timeframe):
             operational_state=operational_state,
         )
         institutional_payload = build_institutional_payload(smc, wyckoff)
+        advanced_confluence = build_advanced_confluence(
+            score=score,
+            technical=technical_reading,
+            smc=smc,
+            volume=volume_analysis,
+            mtf_confluence=mtf_confluence,
+            wyckoff=wyckoff,
+            elliott_wave=elliott_wave,
+            tape_reading=tape_reading,
+            levels=levels,
+        )
 
         response = {
             "success": True,
@@ -767,6 +917,9 @@ def get_analysis(symbol, timeframe):
             "smc": smc,
             "volume_analysis": volume_analysis,
             "wyckoff": wyckoff,
+            "elliott_wave": elliott_wave,
+            "tape_reading": tape_reading,
+            "advanced_confluence": advanced_confluence,
             "institutional_context": institutional_payload,
             "smc_score": institutional_payload["smc_score"],
             "wyckoff_phase": institutional_payload["wyckoff_phase"],
@@ -789,6 +942,8 @@ def get_analysis(symbol, timeframe):
             "final_score": final_score,
             "confluence_ai": confluence_ai,
             "operational_signal": operational_signal,
+            "final_signal": operational_signal.get("signal") or confluence_ai.get("signal") or final_score.get("signal"),
+            "market_bias": mtf_confluence.get("dominant_direction") or institutional_payload.get("institutional_bias"),
             "disclaimer": DISCLAIMER,
             "operational_state": operational_state,
             "candle_reading": ta.read_latest_candles(5),
@@ -824,6 +979,19 @@ def get_analysis(symbol, timeframe):
             "smc": default_smc(),
             "volume_analysis": default_volume(),
             "wyckoff": default_wyckoff(),
+            "elliott_wave": default_elliott_wave(),
+            "tape_reading": default_tape_reading(),
+            "advanced_confluence": build_advanced_confluence(
+                score=0,
+                technical=default_technical(None),
+                smc=default_smc(),
+                volume=default_volume(),
+                mtf_confluence={},
+                wyckoff=default_wyckoff(),
+                elliott_wave=default_elliott_wave(),
+                tape_reading=default_tape_reading(),
+                levels={},
+            ),
             "institutional_context": institutional_payload,
             "smc_score": institutional_payload["smc_score"],
             "wyckoff_phase": institutional_payload["wyckoff_phase"],
@@ -1058,6 +1226,28 @@ def api_replay_start():
         return jsonify({"success": False, "error": str(error), "message": "Nao foi possivel iniciar o replay para o periodo escolhido."}), 200
 
 
+def start_replay_session():
+    payload = request.get_json(silent=True) or {}
+    symbol = normalize_symbol(payload.get("symbol", DEFAULT_SYMBOL))
+    timeframe = normalize_timeframe(payload.get("timeframe", "15m"))
+    speed = int(payload.get("speed", 1))
+    try:
+        df = load_market_data(symbol, timeframe, 1000)
+        meta = market.last_meta(symbol)
+        session = replay_engine.create(
+            candles=df,
+            symbol=symbol,
+            market=meta.get("market"),
+            timeframe=timeframe,
+            start_date=payload.get("start_date"),
+            end_date=payload.get("end_date"),
+            speed=speed,
+        )
+        return jsonify(sanitize_json(session.start()))
+    except Exception as error:
+        return jsonify({"success": False, "error": str(error), "message": "Nao foi possivel iniciar o replay para o periodo escolhido."}), 200
+
+
 @app.route("/api/replay/step", methods=["POST"])
 @login_required
 def api_replay_step():
@@ -1111,6 +1301,73 @@ def api_replay_results():
         return jsonify({"success": False, "error": str(error)}), 200
 
 
+@app.route("/api/replay/operacional/start", methods=["POST"])
+@login_required
+def api_replay_operacional_start():
+    payload = request.get_json(silent=True) or {}
+    symbol = normalize_symbol(payload.get("symbol", DEFAULT_SYMBOL))
+    timeframe = normalize_timeframe(payload.get("timeframe", "15m"))
+    speed = int(payload.get("speed", 1))
+    try:
+        df = load_market_data(symbol, timeframe, 1000)
+        meta = market.last_meta(symbol)
+        session = operacional_replay_engine.create(
+            candles=df,
+            symbol=symbol,
+            market=meta.get("market"),
+            timeframe=timeframe,
+            start_date=payload.get("start_date"),
+            end_date=payload.get("end_date"),
+            speed=speed,
+        )
+        return jsonify(sanitize_json(session.start()))
+    except Exception as error:
+        return jsonify({"success": False, "error": str(error), "message": "Nao foi possivel iniciar o replay operacional para o periodo escolhido."}), 200
+
+
+@app.route("/api/replay/operacional/step", methods=["POST"])
+@login_required
+def api_replay_operacional_step():
+    payload = request.get_json(silent=True) or {}
+    try:
+        session = operacional_replay_engine.get(payload.get("session_id"))
+        return jsonify(sanitize_json(session.step(int(payload.get("direction", 1)))))
+    except Exception as error:
+        return jsonify({"success": False, "error": str(error)}), 200
+
+
+@app.route("/api/replay/operacional/pause", methods=["POST"])
+@login_required
+def api_replay_operacional_pause():
+    payload = request.get_json(silent=True) or {}
+    try:
+        session = operacional_replay_engine.get(payload.get("session_id"))
+        return jsonify(sanitize_json(session.pause()))
+    except Exception as error:
+        return jsonify({"success": False, "error": str(error)}), 200
+
+
+@app.route("/api/replay/operacional/reset", methods=["POST"])
+@login_required
+def api_replay_operacional_reset():
+    payload = request.get_json(silent=True) or {}
+    try:
+        session = operacional_replay_engine.get(payload.get("session_id"))
+        return jsonify(sanitize_json(session.reset()))
+    except Exception as error:
+        return jsonify({"success": False, "error": str(error)}), 200
+
+
+@app.route("/api/replay/operacional/status")
+@login_required
+def api_replay_operacional_status():
+    try:
+        session = operacional_replay_engine.get(request.args.get("session_id"))
+        return jsonify(sanitize_json(session.status()))
+    except Exception as error:
+        return jsonify({"success": False, "error": str(error)}), 200
+
+
 @app.route("/api/operacional/analysis/<symbol>/<timeframe>")
 @login_required
 def api_operacional_analysis(symbol, timeframe):
@@ -1138,6 +1395,82 @@ def api_operacional_analysis(symbol, timeframe):
             "error": str(error),
             "narrative": ["Nao foi possivel gerar leitura operacional para este ativo agora."],
         })), 200
+
+
+@app.route("/api/operacional/candles/<symbol>/<timeframe>")
+@login_required
+def api_operacional_candles(symbol, timeframe):
+    symbol = normalize_symbol(symbol)
+    timeframe = normalize_timeframe(timeframe)
+    try:
+        limit = int(request.args.get("limit", 240))
+        df = load_market_data(symbol, timeframe, limit)
+        meta = market.last_meta(symbol)
+        payload = operacional_chart_payload(df, symbol, timeframe)
+        payload.update({
+            "source": meta.get("source"),
+            "market": meta.get("market"),
+            "market_label": meta.get("market_label"),
+            "market_status": meta.get("market_status"),
+            "market_message": meta.get("message"),
+        })
+        return jsonify(sanitize_json(payload))
+    except Exception as error:
+        return jsonify({"success": False, "symbol": symbol, "timeframe": timeframe, "error": str(error), "candles": [], "overlays": {}}), 200
+
+
+@app.route("/api/operacional/live/<symbol>/<timeframe>")
+@login_required
+def api_operacional_live(symbol, timeframe):
+    symbol = normalize_symbol(symbol)
+    timeframe = normalize_timeframe(timeframe)
+    try:
+        limit = int(request.args.get("limit", 240))
+        df = load_market_data(symbol, timeframe, limit)
+        reading = build_operacional_reading(df, symbol, timeframe)
+        signal = reading.get("operacional_signal", {})
+        return jsonify(sanitize_json({
+            "success": True,
+            "module": "operacional_leitura_grafica",
+            "isolated": True,
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "operacional_live": reading.get("operacional_live", []),
+            "operacional_context": reading.get("operacional_context", {}),
+            "operacional_score": reading.get("operacional_score", 0),
+            "operacional_signal": signal,
+            "status": signal.get("status", "analisando"),
+            "direction": signal.get("direction", "NEUTRO"),
+            "disclaimer": reading.get("disclaimer"),
+        }))
+    except Exception as error:
+        return jsonify({"success": False, "symbol": symbol, "timeframe": timeframe, "error": str(error), "messages": ["Leitura operacional indisponivel."]}), 200
+
+
+@app.route("/api/operacional/signals/<symbol>/<timeframe>")
+@login_required
+def api_operacional_signals(symbol, timeframe):
+    symbol = normalize_symbol(symbol)
+    timeframe = normalize_timeframe(timeframe)
+    try:
+        limit = int(request.args.get("limit", 240))
+        df = load_market_data(symbol, timeframe, limit)
+        reading = build_operacional_reading(df, symbol, timeframe)
+        return jsonify(sanitize_json({
+            "success": True,
+            "module": "operacional_leitura_grafica",
+            "isolated": True,
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "operacional_signal": reading.get("operacional_signal", {}),
+            "operacional_score": reading.get("operacional_score", 0),
+            "operacional_confirmations": reading.get("operacional_confirmations", []),
+            "operacional_invalidations": reading.get("operacional_invalidations", []),
+            "operacional_trade_plan": reading.get("operacional_trade_plan", {}),
+            "disclaimer": reading.get("disclaimer"),
+        }))
+    except Exception as error:
+        return jsonify({"success": False, "symbol": symbol, "timeframe": timeframe, "error": str(error), "signal": {"status": "analisando", "direction": "NEUTRO"}}), 200
 
 
 @app.route("/api/operacional/context/<symbol>/<timeframe>")

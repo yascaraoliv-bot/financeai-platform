@@ -12,7 +12,6 @@ import pandas as pd
 
 from .live_signals import LiveSignalManager
 from .live_trading import build_live_status
-from .operacional_reader import build_operacional_reading
 
 
 DISCLAIMER = "Replay baseado em dados historicos. Resultado passado nao garante resultado futuro."
@@ -66,7 +65,6 @@ class ReplaySession:
     def status(self):
         window = self.current_window()
         live_status = build_live_status(window, self.symbol, self.timeframe)
-        operacional = build_operacional_reading(window, self.symbol, self.timeframe)
         live_status.update({
             "market": self.market,
             "replay": True,
@@ -83,6 +81,7 @@ class ReplaySession:
         return {
             "success": True,
             "session_id": self.id,
+            "mode": "complete",
             "symbol": self.symbol,
             "market": self.market,
             "timeframe": self.timeframe,
@@ -96,7 +95,6 @@ class ReplaySession:
             "candles": self._chart_candles(window),
             "volumes": self._chart_volumes(window),
             "live_status": live_status,
-            "operacional_reading": operacional,
             "signal": signal,
             "signals": self.signal_manager.list_active(),
             "history": self.signal_manager.list_history(200),

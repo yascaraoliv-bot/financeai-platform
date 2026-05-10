@@ -27,6 +27,7 @@ class AdvancedDashboard {
         this.candleMemoryCache = new Map();
         this.analysisMemoryCache = new Map();
         this.latestStreaming = true;
+        this.realtimeAnalysisTimer = null;
         this.init();
     }
 
@@ -250,11 +251,12 @@ class AdvancedDashboard {
         return data;
     }
 
-    async fetchAnalysis(symbol, timeframe, signal) {
+    async fetchAnalysis(symbol, timeframe, signal, force = false) {
         const key = `analysis:${symbol}:${timeframe}`;
-        const cached = this.getLocalCache(this.analysisMemoryCache, key);
+        const cached = force ? null : this.getLocalCache(this.analysisMemoryCache, key);
         if (cached) return cached;
-        const response = await fetch(`/api/analysis/${symbol}/${timeframe}`, { signal });
+        const suffix = force ? `?refresh=${Date.now()}` : '';
+        const response = await fetch(`/api/analysis/${symbol}/${timeframe}${suffix}`, { signal });
         const data = await response.json();
         if (data?.success) this.setLocalCache(this.analysisMemoryCache, key, data);
         return data;
@@ -354,6 +356,9 @@ class AdvancedDashboard {
             validation: { entry_quality: { quality: 'neutra', probability: 0, invalidated: false } },
             smc: {},
             wyckoff: {},
+            elliott_wave: {},
+            tape_reading: {},
+            advanced_confluence: {},
             institutional_context: {},
             volume_analysis: {},
             operational_state: {
@@ -407,6 +412,7 @@ class AdvancedDashboard {
             });
             this.setText('currentPrice', this.formatPrice(candle.close));
             this.setText('lastUpdate', new Date().toLocaleTimeString('pt-BR'));
+            if (kline.x) this.scheduleRealtimeAnalysis();
         };
         this.klineSocket.onerror = () => this.setConnectionState('REST ativo');
         this.klineSocket.onclose = () => {
@@ -526,7 +532,7 @@ class AdvancedDashboard {
         const gaugeScore = confluenceAI.score != null ? score : Number(analysis.operational_score || 0);
         const finalScore10 = Number(confluenceAI.score != null ? (score / 10) : (finalScore.score ?? (gaugeScore / 10)));
         const mtfConfluence = analysis.multi_timeframe?.confluence;
-        const activeSignal = operationalSignal.signal || confluenceAI.signal || finalScore.signal || this.getSignalText(signal.signal_type);
+        const finalDecision = this.deriveFinalSignalDecision(analysis, signal, gaugeScore);
 
         this.latestStreaming = analysis.streaming ?? candlesPayload.streaming ?? this.latestStreaming;
         this.setText('chartTitle', `${analysis.symbol} · ${String(source).toUpperCase()} · ${analysis.timeframe}`);
@@ -540,9 +546,9 @@ class AdvancedDashboard {
         this.setText('scoreText', operationalSignal.status || confluenceAI.classification || finalScore.classification || (gaugeScore > 70 ? 'Alta qualidade' : gaugeScore > 50 ? 'Aguardando confirmacao' : 'Risco elevado'));
         this.updateGauge(gaugeScore);
 
-        this.setText('mainSignal', activeSignal);
-        this.setSignalVisualState(activeSignal, gaugeScore);
-        this.setText('confidenceValue', `${Math.round(operationalSignal.confidence ?? confluenceAI.confidence ?? finalScore.confidence ?? signal.confidence ?? 0)}%`);
+        this.setText('mainSignal', finalDecision.label);
+        this.setSignalVisualState(finalDecision);
+        this.setText('confidenceValue', `${Math.round(finalDecision.confidence)}%`);
         this.setText('entryAggressive', operationalSignal.entry_aggressive ? this.formatPrice(operationalSignal.entry_aggressive) : 'NAO');
         this.setText('entryConservative', operationalSignal.entry_conservative ? this.formatPrice(operationalSignal.entry_conservative) : 'NAO');
         this.setText('riskDisclaimer', operationalSignal.disclaimer || analysis.disclaimer || confluenceAI.disclaimer || document.getElementById('riskDisclaimer')?.textContent || '');
@@ -578,24 +584,138 @@ class AdvancedDashboard {
         this.updateInstitutionalPanels(analysis);
     }
 
-    setSignalVisualState(signal, score) {
-        const normalized = String(signal || 'NEUTRO').toUpperCase();
-        const scoreLabel = Number.isFinite(Number(score)) ? `${Math.round(Number(score))}%` : 'ATIVO';
-        const isBuy = normalized === 'COMPRA' || normalized === 'BUY';
-        const isSell = normalized === 'VENDA' || normalized === 'SELL';
-        const isNeutral = normalized === 'NEUTRO' || normalized === 'NEUTRAL';
-        const isWaiting = normalized.includes('AGUARDAR') || normalized.includes('WAIT');
-        const displaySignal = isBuy ? 'COMPRA' : isSell ? 'VENDA' : isWaiting ? 'AGUARDAR CONFIRMACAO' : 'NEUTRO';
+    deriveFinalSignalDecision(analysis, signal, fallbackScore) {
+        const operationalSignal = analysis.operational_signal || {};
+        const finalScore = analysis.final_score || {};
+        const confluenceAI = analysis.confluence_ai || {};
+        const advanced = analysis.advanced_confluence || {};
+        const smc = analysis.smc || {};
+        const volume = analysis.volume_analysis || {};
+        const wyckoff = analysis.wyckoff || {};
+        const elliott = analysis.elliott_wave || {};
+        const tape = analysis.tape_reading || {};
+        const mtf = analysis.multi_timeframe?.confluence || {};
+        const validation = analysis.validation || {};
+        const state = analysis.operational_state || {};
+        const levels = analysis.levels || {};
+
+        const score = Number(advanced.score ?? operationalSignal.score ?? confluenceAI.score ?? analysis.operational_score ?? fallbackScore ?? 0);
+        const confidence = Number(operationalSignal.confidence ?? confluenceAI.confidence ?? finalScore.confidence ?? signal.confidence ?? score ?? 0);
+        const rr = Number(operationalSignal.risk_reward ?? levels.risco_retorno ?? 0);
+        const rawSignals = [
+            operationalSignal.signal,
+            analysis.final_signal,
+            analysis.market_bias,
+            confluenceAI.signal,
+            finalScore.signal,
+            this.getSignalText(signal.signal_type),
+            mtf.dominant_direction,
+        ].map((item) => String(item || '').toUpperCase());
+
+        let bullish = 0;
+        let bearish = 0;
+        let waitingPressure = 0;
+
+        rawSignals.forEach((item) => {
+            if (['COMPRA', 'BUY', 'BULLISH'].includes(item)) bullish += 2;
+            if (['VENDA', 'SELL', 'BEARISH'].includes(item)) bearish += 2;
+            if (item.includes('AGUARDAR') || item.includes('WAIT')) waitingPressure += 2;
+        });
+
+        if (smc.institutional_bias === 'bullish' || smc.confirmed && rawSignals.includes('BUY')) bullish += 2;
+        if (smc.institutional_bias === 'bearish' || smc.confirmed && rawSignals.includes('SELL')) bearish += 2;
+        if (smc.has_bos && smc.structure?.trend === 'bullish') bullish += 1;
+        if (smc.has_bos && smc.structure?.trend === 'bearish') bearish += 1;
+        if (volume.signal === 'BULLISH_VOLUME' || volume.dominant_side === 'BUYERS') bullish += 1;
+        if (volume.signal === 'BEARISH_VOLUME' || volume.dominant_side === 'SELLERS') bearish += 1;
+        if (tape.order_flow_bias === 'BUY_FLOW') bullish += 2;
+        if (tape.order_flow_bias === 'SELL_FLOW') bearish += 2;
+        if (wyckoff.wyckoff_phase === 'acumulacao' || wyckoff.spring) bullish += 1;
+        if (wyckoff.wyckoff_phase === 'distribuicao' || wyckoff.upthrust) bearish += 1;
+        if (elliott.wave_bias === 'bullish' && elliott.impulse_structure?.detected) bullish += 1;
+        if (elliott.wave_bias === 'bearish' && elliott.impulse_structure?.detected) bearish += 1;
+        if (mtf.dominant_direction === 'BULLISH' && mtf.confirmed_timeframes >= 3) bullish += 2;
+        if (mtf.dominant_direction === 'BEARISH' && mtf.confirmed_timeframes >= 3) bearish += 2;
+
+        const invalidated = state.state === 'invalidated'
+            || validation.entry_quality?.invalidated
+            || smc.invalidated
+            || smc.false_breakout?.detected
+            || (rr > 0 && rr < 1);
+        const weakContext = state.state === 'loading'
+            || state.ready === false
+            || state.state === 'waiting_confirmation'
+            || validation.lateralization?.detected
+            || volume.signal === 'NEUTRAL_VOLUME'
+            || tape.order_flow_bias === 'BALANCED_FLOW'
+            || !mtf.strong_signal_allowed
+            || waitingPressure > 0;
+        const conflict = bullish > 0 && bearish > 0 && Math.abs(bullish - bearish) <= 2;
+        const dominant = bullish > bearish ? 'COMPRA' : bearish > bullish ? 'VENDA' : 'NEUTRO';
+        const dominantVotes = Math.max(bullish, bearish);
+
+        if (!analysis.success || state.state === 'loading') {
+            return { key: 'wait', label: 'AGUARDAR CONFIRMACAO', confidence: Math.max(confidence, 35), score, intensity: 'carregando' };
+        }
+        if (score < 35 && dominantVotes < 4) {
+            return { key: 'neutral', label: 'NEUTRO', confidence: Math.max(confidence, score), score, intensity: 'baixa' };
+        }
+        if (invalidated || conflict || weakContext || dominantVotes < 4 || score < 55) {
+            return { key: 'wait', label: 'AGUARDAR CONFIRMACAO', confidence: Math.max(confidence, score), score, intensity: conflict ? 'conflito' : 'moderada' };
+        }
+        if (dominant === 'COMPRA') {
+            return { key: 'buy', label: 'COMPRA', confidence: Math.max(confidence, score), score, intensity: score >= 75 ? 'forte' : 'moderada' };
+        }
+        if (dominant === 'VENDA') {
+            return { key: 'sell', label: 'VENDA', confidence: Math.max(confidence, score), score, intensity: score >= 75 ? 'forte' : 'moderada' };
+        }
+        return { key: 'neutral', label: 'NEUTRO', confidence: Math.max(confidence, score), score, intensity: 'baixa' };
+    }
+
+    setSignalVisualState(decision) {
+        const key = decision?.key || 'neutral';
+        const displaySignal = decision?.label || 'NEUTRO';
+        const scoreLabel = Number.isFinite(Number(decision?.confidence))
+            ? `${Math.round(Number(decision.confidence))}%`
+            : 'ATIVO';
 
         const mainSignal = document.getElementById('mainSignal');
         if (mainSignal) {
             mainSignal.dataset.signal = displaySignal;
         }
 
-        this.setText('buyCardState', isBuy ? scoreLabel : '--');
-        this.setText('sellCardState', isSell ? scoreLabel : '--');
-        this.setText('neutralCardState', isNeutral ? 'ATIVO' : '--');
-        this.setText('waitCardState', isWaiting ? 'ATIVO' : '--');
+        const cards = [
+            { id: 'buyCardState', key: 'buy' },
+            { id: 'sellCardState', key: 'sell' },
+            { id: 'neutralCardState', key: 'neutral' },
+            { id: 'waitCardState', key: 'wait' },
+        ];
+        cards.forEach((item) => {
+            const value = item.key === key ? scoreLabel : '--';
+            this.setText(item.id, value);
+            const el = document.getElementById(item.id);
+            const card = el?.closest('.signal-pill');
+            if (!card) return;
+            card.classList.toggle('active', item.key === key);
+            card.dataset.active = item.key === key ? 'true' : 'false';
+            card.dataset.intensity = item.key === key ? (decision?.intensity || 'moderada') : '';
+        });
+    }
+
+    scheduleRealtimeAnalysis() {
+        clearTimeout(this.realtimeAnalysisTimer);
+        this.realtimeAnalysisTimer = setTimeout(() => this.refreshAnalysisOnly(), 500);
+    }
+
+    async refreshAnalysisOnly() {
+        try {
+            const cacheKey = `analysis:${this.currentAsset}:${this.currentTimeframe}`;
+            this.analysisMemoryCache.delete(cacheKey);
+            const analysis = await this.fetchAnalysis(this.currentAsset, this.currentTimeframe, undefined, true);
+            if (analysis?.success) this.updateAnalysisPanel(analysis, { ticker: analysis.ticker || {}, streaming: this.latestStreaming });
+        } catch (error) {
+            // Mantem a ultima decisao visual quando a atualizacao em tempo real falhar.
+        }
     }
 
     updateInstitutionalPanels(analysis) {
@@ -628,6 +748,7 @@ class AdvancedDashboard {
         this.setText('lateralState', validation.lateralization?.detected ? 'SIM' : 'NAO');
         this.updateWyckoffPanel(wyckoff);
         this.updateVolumeInstitutionalPanel(analysis.volume_analysis || {});
+        this.updateAdvancedReadingsPanel(analysis);
         this.setOperationalState(analysis.operational_state || {});
     }
 
@@ -652,6 +773,24 @@ class AdvancedDashboard {
         this.setText('wyckoffBuyingClimax', wyckoff.buying_climax ? 'SIM' : 'NAO');
         this.setText('wyckoffTest', wyckoff.test ? 'SIM' : 'NAO');
         this.setText('wyckoffVolumeRatio', wyckoff.volume_ratio ? `${wyckoff.volume_ratio}x` : '--');
+    }
+
+    updateAdvancedReadingsPanel(analysis) {
+        const wyckoff = analysis.wyckoff || {};
+        const elliott = analysis.elliott_wave || {};
+        const tape = analysis.tape_reading || {};
+        const advanced = analysis.advanced_confluence || {};
+
+        this.setText('advancedWyckoffPhase', wyckoff.wyckoff_phase || wyckoff.phase || '--');
+        this.setText('advancedManipulation', wyckoff.institutional_manipulation ? 'SIM' : 'NAO');
+        this.setText('advancedCurrentWave', elliott.current_wave || '--');
+        this.setText('advancedWaveBias', elliott.wave_bias || '--');
+        this.setText('advancedFlowBias', tape.order_flow_bias || '--');
+        this.setText('advancedBuyAggression', Number.isFinite(Number(tape.buy_aggression)) ? `${Math.round(Number(tape.buy_aggression))}%` : '--');
+        this.setText('advancedSellAggression', Number.isFinite(Number(tape.sell_aggression)) ? `${Math.round(Number(tape.sell_aggression))}%` : '--');
+        this.setText('advancedAbsorption', tape.absorption?.detected ? 'SIM' : 'NAO');
+        this.setText('advancedScore', Number.isFinite(Number(advanced.score)) ? `${Math.round(Number(advanced.score))}/100` : '--');
+        this.setText('advancedExplanation', advanced.explanation || tape.explanation || elliott.explanation || wyckoff.explanation || '--');
     }
 
     setOperationalState(state) {

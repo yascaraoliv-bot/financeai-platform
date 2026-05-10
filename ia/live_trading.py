@@ -5,9 +5,12 @@ Motor Live Trading IA para leitura operacional em tempo quase real.
 from datetime import datetime, timezone
 
 from .analysis import RiskManagement
+from .elliott_wave import read_elliott_wave
 from .smart_money import analyze_smart_money
+from .tape_reading import read_tape
 from .technical_reader import read_technical
 from .volume_reader import read_volume
+from .wyckoff_reader import read_wyckoff_advanced
 
 
 DISCLAIMER = "Analise educativa. Nao e recomendacao financeira. Toda operacao envolve risco."
@@ -42,12 +45,27 @@ class LiveTradingIA:
         technical = read_technical(self.df)
         volume = read_volume(self.df)
         smc = analyze_smart_money(self.df, technical.get("signal", "NEUTRAL"))
+        try:
+            wyckoff = read_wyckoff_advanced(self.df)
+        except Exception:
+            wyckoff = {"wyckoff_phase": "indefinida", "accumulation_score": 50, "distribution_score": 50, "confirmations": [], "invalidations": [], "explanation": "Wyckoff indisponivel."}
+        try:
+            elliott_wave = read_elliott_wave(self.df)
+        except Exception:
+            elliott_wave = {"current_wave": "indefinida", "wave_bias": "neutral", "confidence": 0, "impulse_structure": {}, "corrective_structure": {}, "confirmations": [], "invalidations": [], "explanation": "Elliott indisponivel."}
+        try:
+            tape_reading = read_tape(self.df)
+        except Exception:
+            tape_reading = {"order_flow_bias": "BALANCED_FLOW", "flow_score": 50, "absorption": {"detected": False}, "confirmations": [], "invalidations": [], "explanation": "Tape reading indisponivel."}
         levels = self._levels(technical)
 
         trend_score, trend_strength = self._trend_score(technical)
         momentum_score = self._momentum_score(technical)
         volume_score, volume_strength = self._volume_score(volume)
         smc_score = int(smc.get("smc_score", 50))
+        wyckoff_score = self._wyckoff_score(wyckoff)
+        elliott_score = int(elliott_wave.get("confidence", 35))
+        tape_score = int(tape_reading.get("flow_score", 50))
         risk_score = self._risk_score(levels)
         timing_score = self._timing_score(technical, volume)
         candle_score = self._candle_score(technical)
@@ -55,17 +73,19 @@ class LiveTradingIA:
         confluence_score = int(max(0, min(100, round(
             trend_score * 0.22
             + momentum_score * 0.14
-            + volume_score * 0.15
+            + ((volume_score * 0.45) + (tape_score * 0.55)) * 0.17
             + smc_score * 0.18
-            + risk_score * 0.14
+            + wyckoff_score * 0.08
+            + elliott_score * 0.04
+            + risk_score * 0.10
             + timing_score * 0.10
             + candle_score * 0.07
         ))))
-        direction = self._direction(technical, smc, volume)
-        invalidations = self._invalidations(technical, volume, smc, levels)
-        confirmations = self._confirmations(technical, volume, smc)
+        direction = self._direction(technical, smc, volume, tape_reading)
+        invalidations = self._invalidations(technical, volume, smc, levels, wyckoff, elliott_wave, tape_reading)
+        confirmations = self._confirmations(technical, volume, smc, wyckoff, elliott_wave, tape_reading)
         state = self._state(confluence_score, direction, technical, volume, smc, levels, invalidations)
-        messages = self._messages(state, confluence_score, direction, technical, volume, smc, confirmations, invalidations)
+        messages = self._messages(state, confluence_score, direction, technical, volume, smc, confirmations, invalidations, wyckoff, elliott_wave, tape_reading)
         confidence = int(max(10, min(95, confluence_score * 0.72 + len(confirmations) * 3 - len(invalidations) * 4)))
 
         return {
@@ -120,6 +140,9 @@ class LiveTradingIA:
                 "metrics": volume.get("metrics", {}),
                 "breakout_confirmation": volume.get("breakout_confirmation", {}),
             },
+            "wyckoff": wyckoff,
+            "elliott_wave": elliott_wave,
+            "tape_reading": tape_reading,
             "alerts": self._alerts(state, technical, smc, volume),
             "disclaimer": DISCLAIMER,
             "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -186,6 +209,16 @@ class LiveTradingIA:
             return min(100, confidence + 10), strength
         return max(15, confidence - 18), strength
 
+    def _wyckoff_score(self, wyckoff):
+        accumulation = float(wyckoff.get("accumulation_score", 50))
+        distribution = float(wyckoff.get("distribution_score", 50))
+        phase = wyckoff.get("wyckoff_phase") or wyckoff.get("phase")
+        if phase == "acumulacao":
+            return int(max(0, min(100, accumulation)))
+        if phase == "distribuicao":
+            return int(max(0, min(100, 100 - distribution * 0.35)))
+        return int(max(0, min(100, (accumulation + (100 - distribution)) / 2)))
+
     def _risk_score(self, levels):
         rr = float(levels.get("risk_reward") or 0)
         if rr >= 1.8:
@@ -219,12 +252,13 @@ class LiveTradingIA:
             return 62
         return 38
 
-    def _direction(self, technical, smc, volume):
+    def _direction(self, technical, smc, volume, tape_reading):
         signal = technical.get("signal")
         bias = smc.get("institutional_bias")
         volume_signal = volume.get("signal")
-        bullish_votes = int(signal == "BUY") + int(bias == "bullish") + int(volume_signal == "BULLISH_VOLUME")
-        bearish_votes = int(signal == "SELL") + int(bias == "bearish") + int(volume_signal == "BEARISH_VOLUME")
+        flow = tape_reading.get("order_flow_bias")
+        bullish_votes = int(signal == "BUY") + int(bias == "bullish") + int(volume_signal == "BULLISH_VOLUME") + int(flow == "BUY_FLOW")
+        bearish_votes = int(signal == "SELL") + int(bias == "bearish") + int(volume_signal == "BEARISH_VOLUME") + int(flow == "SELL_FLOW")
         if bullish_votes > bearish_votes:
             return "BUY"
         if bearish_votes > bullish_votes:
@@ -258,19 +292,25 @@ class LiveTradingIA:
             return "WAIT_NEXT_CANDLE"
         return "WAITING_CONFIRMATION"
 
-    def _confirmations(self, technical, volume, smc):
+    def _confirmations(self, technical, volume, smc, wyckoff, elliott_wave, tape_reading):
         items = []
         items.extend(technical.get("confirmations", [])[:4])
         items.extend(volume.get("reasons", [])[:3])
         items.extend(smc.get("confirmations", [])[:3])
+        items.extend(wyckoff.get("confirmations", [])[:2])
+        items.extend(elliott_wave.get("confirmations", [])[:2])
+        items.extend(tape_reading.get("confirmations", [])[:2])
         if smc.get("institutional_bias") in ["bullish", "bearish"]:
             items.append(f"Vies institucional {smc.get('institutional_bias')}.")
         return items
 
-    def _invalidations(self, technical, volume, smc, levels):
+    def _invalidations(self, technical, volume, smc, levels, wyckoff, elliott_wave, tape_reading):
         items = []
         items.extend(technical.get("invalidations", [])[:4])
         items.extend(smc.get("invalidations", [])[:3])
+        items.extend(wyckoff.get("invalidations", [])[:2])
+        items.extend(elliott_wave.get("invalidations", [])[:2])
+        items.extend(tape_reading.get("invalidations", [])[:2])
         if smc.get("false_breakout", {}).get("detected"):
             items.append("Possivel falso rompimento. Nao entrar ainda.")
         if float(volume.get("metrics", {}).get("volume_ratio", 1)) < 0.72:
@@ -279,7 +319,7 @@ class LiveTradingIA:
             items.append("Risco/retorno abaixo de 1:1.")
         return items
 
-    def _messages(self, state, score, direction, technical, volume, smc, confirmations, invalidations):
+    def _messages(self, state, score, direction, technical, volume, smc, confirmations, invalidations, wyckoff, elliott_wave, tape_reading):
         messages = ["Analisando estrutura do mercado..."]
         breakout = technical.get("details", {}).get("breakout", {})
         if breakout.get("detected"):
@@ -292,6 +332,23 @@ class LiveTradingIA:
             messages.append("Confluencia compradora aumentando.")
         if direction == "SELL" and score >= 55:
             messages.append("Confluencia vendedora aumentando.")
+        phase = wyckoff.get("wyckoff_phase") or wyckoff.get("phase")
+        if phase == "acumulacao":
+            messages.append("Possivel acumulacao detectada.")
+        if phase == "distribuicao":
+            messages.append("Distribuicao em andamento.")
+        if wyckoff.get("institutional_manipulation"):
+            messages.append("Manipulacao institucional suspeita.")
+        if elliott_wave.get("impulse_structure", {}).get("detected") and elliott_wave.get("wave_bias") == "bullish":
+            messages.append("Estrutura impulsiva de alta.")
+        if elliott_wave.get("corrective_structure", {}).get("detected"):
+            messages.append("Correcao ABC provavel.")
+        if tape_reading.get("order_flow_bias") == "BUY_FLOW":
+            messages.append("Agressao compradora aumentando.")
+        if tape_reading.get("order_flow_bias") == "SELL_FLOW":
+            messages.append("Fluxo vendedor dominante.")
+        if tape_reading.get("absorption", {}).get("detected"):
+            messages.append("Absorcao detectada.")
 
         state_messages = {
             "WAITING_CONFIRMATION": "Aguardando fechamento do candle.",

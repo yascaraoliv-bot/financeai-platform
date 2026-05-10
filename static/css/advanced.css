@@ -1494,6 +1494,7 @@
     border-radius: 8px;
     background: linear-gradient(180deg, rgba(15, 23, 42, 0.92), rgba(8, 13, 22, 0.92));
     overflow: hidden;
+    transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease, background 0.25s ease;
 }
 
 .signal-pill::before {
@@ -1540,6 +1541,59 @@
 .signal-wait {
     color: var(--accent-yellow);
     border-color: rgba(250, 204, 21, 0.34);
+}
+
+.signal-pill.active {
+    transform: translateY(-1px);
+    border-width: 1px;
+    animation: signal-pulse 2.6s ease-in-out infinite;
+}
+
+.signal-pill.active::after {
+    content: "ATIVO";
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    padding: 4px 7px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    color: currentColor;
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+}
+
+.signal-buy.active {
+    border-color: rgba(34, 197, 94, 0.78);
+    box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.18), 0 0 34px rgba(34, 197, 94, 0.20);
+    background: linear-gradient(180deg, rgba(20, 83, 45, 0.34), rgba(8, 13, 22, 0.95));
+}
+
+.signal-sell.active {
+    border-color: rgba(239, 68, 68, 0.78);
+    box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.18), 0 0 34px rgba(239, 68, 68, 0.20);
+    background: linear-gradient(180deg, rgba(127, 29, 29, 0.34), rgba(8, 13, 22, 0.95));
+}
+
+.signal-neutral.active {
+    border-color: rgba(148, 163, 184, 0.76);
+    box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.16), 0 0 30px rgba(56, 189, 248, 0.12);
+    background: linear-gradient(180deg, rgba(51, 65, 85, 0.32), rgba(8, 13, 22, 0.95));
+}
+
+.signal-wait.active {
+    border-color: rgba(250, 204, 21, 0.80);
+    box-shadow: 0 0 0 1px rgba(250, 204, 21, 0.18), 0 0 34px rgba(250, 204, 21, 0.18);
+    background: linear-gradient(180deg, rgba(113, 63, 18, 0.34), rgba(8, 13, 22, 0.95));
+}
+
+@keyframes signal-pulse {
+    0%, 100% {
+        filter: brightness(1);
+    }
+    50% {
+        filter: brightness(1.12);
+    }
 }
 
 .main-grid {

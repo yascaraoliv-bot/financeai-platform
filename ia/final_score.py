@@ -4,7 +4,7 @@ Score operacional final da IA em escala 0-10.
 
 
 class FinalOperationalScore:
-    def __init__(self, technical, ai_signal, levels, smc, volume, mtf_analysis, mtf_confluence, wyckoff=None):
+    def __init__(self, technical, ai_signal, levels, smc, volume, mtf_analysis, mtf_confluence, wyckoff=None, elliott_wave=None, tape_reading=None):
         self.technical = technical
         self.ai_signal = ai_signal
         self.levels = levels
@@ -13,6 +13,8 @@ class FinalOperationalScore:
         self.mtf_analysis = mtf_analysis
         self.mtf_confluence = mtf_confluence
         self.wyckoff = wyckoff or {}
+        self.elliott_wave = elliott_wave or {}
+        self.tape_reading = tape_reading or {}
 
     def calculate(self):
         components = {}
@@ -28,8 +30,10 @@ class FinalOperationalScore:
         components["atr"] = self._atr(confirmations, invalidations)
         components["support_resistance"] = self._support_resistance(confirmations, invalidations)
         components["volume"] = self._volume(confirmations, invalidations)
+        components["tape_reading"] = self._tape_reading(confirmations, invalidations)
         components["smart_money"] = self._smart_money(confirmations, invalidations)
         components["wyckoff"] = self._wyckoff(confirmations, invalidations)
+        components["elliott_wave"] = self._elliott_wave(confirmations, invalidations)
         components["multi_timeframe"] = self._multi_timeframe(confirmations, invalidations)
         components["confirmation_candle"] = self._confirmation_candle(confirmations, invalidations)
         components["risk_reward"] = self._risk_reward(confirmations, invalidations)
@@ -61,20 +65,22 @@ class FinalOperationalScore:
 
     def _weighted_score(self, components):
         weights = {
-            "trend": 0.95,
-            "rsi": 0.55,
-            "macd": 0.65,
-            "ema": 0.8,
-            "bollinger": 0.45,
-            "vwap": 0.55,
-            "atr": 0.35,
-            "support_resistance": 0.55,
-            "volume": 0.9,
-            "smart_money": 1.15,
-            "wyckoff": 0.45,
-            "multi_timeframe": 1.2,
-            "confirmation_candle": 0.55,
-            "risk_reward": 0.95,
+            "trend": 0.70,
+            "rsi": 0.32,
+            "macd": 0.38,
+            "ema": 0.48,
+            "bollinger": 0.26,
+            "vwap": 0.32,
+            "atr": 0.22,
+            "support_resistance": 0.32,
+            "volume": 0.65,
+            "tape_reading": 0.55,
+            "smart_money": 1.20,
+            "wyckoff": 0.60,
+            "elliott_wave": 0.30,
+            "multi_timeframe": 0.90,
+            "confirmation_candle": 0.32,
+            "risk_reward": 0.30,
         }
         total_weight = sum(weights.values())
         raw = sum(components[key] * weights[key] for key in weights) / total_weight
@@ -168,6 +174,17 @@ class FinalOperationalScore:
         invalidations.append("Volume nao confirma a entrada.")
         return 0.42
 
+    def _tape_reading(self, confirmations, invalidations):
+        confirmations.extend(self.tape_reading.get("confirmations", [])[:2])
+        invalidations.extend(self.tape_reading.get("invalidations", [])[:2])
+        flow_score = self.tape_reading.get("flow_score")
+        if flow_score is not None:
+            return max(0, min(100, float(flow_score))) / 100
+        bias = self.tape_reading.get("order_flow_bias")
+        if bias in ["BUY_FLOW", "SELL_FLOW"]:
+            return 0.78
+        return 0.48
+
     def _smart_money(self, confirmations, invalidations):
         if self.smc.get("invalidated"):
             invalidations.extend(self.smc.get("reasons", [])[:3] or ["Smart Money invalidou o sinal."])
@@ -188,7 +205,7 @@ class FinalOperationalScore:
     def _wyckoff(self, confirmations, invalidations):
         confirmations.extend(self.wyckoff.get("confirmations", [])[:2])
         invalidations.extend(self.wyckoff.get("invalidations", [])[:2])
-        phase = self.wyckoff.get("phase", "indefinida")
+        phase = self.wyckoff.get("wyckoff_phase") or self.wyckoff.get("phase", "indefinida")
         if self.wyckoff.get("spring") or phase == "acumulacao":
             return 0.78
         if self.wyckoff.get("upthrust") or phase == "distribuicao":
@@ -197,7 +214,23 @@ class FinalOperationalScore:
             return 0.64
         if self.wyckoff.get("selling_climax") or self.wyckoff.get("buying_climax"):
             return 0.48
+        if self.wyckoff.get("institutional_manipulation"):
+            return 0.56
         return 0.52
+
+    def _elliott_wave(self, confirmations, invalidations):
+        confirmations.extend(self.elliott_wave.get("confirmations", [])[:2])
+        invalidations.extend(self.elliott_wave.get("invalidations", [])[:2])
+        confidence = self.elliott_wave.get("confidence")
+        if confidence is not None:
+            base = max(0, min(100, float(confidence))) / 100
+        else:
+            base = 0.42
+        if self.elliott_wave.get("reversal_risk") == "alto":
+            return max(0.15, base - 0.25)
+        if self.elliott_wave.get("impulse_structure", {}).get("detected"):
+            return min(1.0, base + 0.12)
+        return base
 
     def _multi_timeframe(self, confirmations, invalidations):
         confluence = self.mtf_confluence or {}
@@ -261,7 +294,7 @@ class FinalOperationalScore:
         return f"{classification} ({signal}) com score {score}/10. Motivo tecnico: {reason} Principal invalidacao: {invalidation}"
 
 
-def calculate_final_score(technical, ai_signal, levels, smc, volume, mtf_analysis, mtf_confluence, wyckoff=None):
+def calculate_final_score(technical, ai_signal, levels, smc, volume, mtf_analysis, mtf_confluence, wyckoff=None, elliott_wave=None, tape_reading=None):
     return FinalOperationalScore(
         technical=technical,
         ai_signal=ai_signal,
@@ -271,4 +304,6 @@ def calculate_final_score(technical, ai_signal, levels, smc, volume, mtf_analysi
         mtf_analysis=mtf_analysis,
         mtf_confluence=mtf_confluence,
         wyckoff=wyckoff,
+        elliott_wave=elliott_wave,
+        tape_reading=tape_reading,
     ).calculate()

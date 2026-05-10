@@ -65,28 +65,44 @@ class OperacionalReader:
         context = self._context_label(trend, current, breakout, pullback)
         narrative = self._narrative(context, trend, current, breakout, pullback, liquidity, risk)
         recommendation = self._recommendation(context, confirmations, invalidations, risk)
+        score = self._operational_score(context, confirmations, invalidations, current, pullback, breakout, liquidity, risk)
+        signal = self._signal_payload(context, trend, confirmations, invalidations, risk, score)
+
+        operational_live = self._live_messages(context, trend, breakout, pullback, liquidity, signal)
+        operational_chart = self._chart_marks(zones, risk, breakout, pullback, liquidity)
 
         return {
             "success": True,
             "module": "operacional_leitura_grafica",
+            "isolated": True,
+            "methodology": "dow_price_action_operacional",
+            "excluded_modules": [
+                "ema", "rsi", "macd", "bollinger", "vwap", "atr",
+                "smart_money_padrao", "bos_padrao", "choch_padrao", "order_blocks_padrao", "fvg_padrao",
+                "volume_reader", "momentum_tecnico_padrao", "multi_timeframe_padrao",
+                "score_geral_padrao", "risco_retorno_padrao", "sinais_ia_padrao",
+                "live_trading_ia_padrao", "technical_reader", "smart_money", "general_score",
+                "operational_signal_padrao",
+            ],
             "symbol": self.symbol,
             "timeframe": self.timeframe,
-            "context": context,
-            "dominant_context": context["label"],
-            "trend": trend,
-            "directional_bias": trend["bias"],
-            "movement_strength": trend["strength_label"],
-            "market_structure": trend["structure"],
-            "zones": zones,
-            "liquidity": liquidity,
-            "breakout": breakout,
-            "pullback": pullback,
-            "fibonacci": fib,
-            "candle_flow": candle_flow[-8:],
-            "current_candle": current,
-            "confirmation": confirmations,
-            "invalidation": invalidations,
-            "risk_management": risk,
+            "operacional_context": context,
+            "operacional_score": score,
+            "operacional_trend": trend,
+            "operacional_zones": zones,
+            "operacional_liquidity": liquidity,
+            "operacional_breakout": breakout,
+            "operacional_pullback": pullback,
+            "operacional_fibonacci": fib,
+            "operacional_candle_flow": candle_flow[-8:],
+            "operacional_current_candle": current,
+            "operacional_confirmations": confirmations,
+            "operacional_invalidations": invalidations,
+            "operacional_risk": risk,
+            "operacional_trade_plan": risk.get("trade_plan", {}),
+            "operacional_signal": signal,
+            "operacional_live": operational_live,
+            "operacional_chart": operational_chart,
             "timing": self._timing(context, current, breakout, pullback),
             "operational_recommendation": recommendation,
             "narrative": narrative,
@@ -99,10 +115,10 @@ class OperacionalReader:
             "success": full.get("success", False),
             "symbol": self.symbol,
             "timeframe": self.timeframe,
-            "context": full.get("context"),
-            "trend": full.get("trend"),
-            "zones": full.get("zones"),
-            "liquidity": full.get("liquidity"),
+            "operacional_context": full.get("operacional_context"),
+            "operacional_trend": full.get("operacional_trend"),
+            "operacional_zones": full.get("operacional_zones"),
+            "operacional_liquidity": full.get("operacional_liquidity"),
             "narrative": full.get("narrative"),
         }
 
@@ -112,8 +128,8 @@ class OperacionalReader:
             "success": full.get("success", False),
             "symbol": self.symbol,
             "timeframe": self.timeframe,
-            "current_candle": full.get("current_candle"),
-            "candle_flow": full.get("candle_flow", []),
+            "operacional_current_candle": full.get("operacional_current_candle"),
+            "operacional_candle_flow": full.get("operacional_candle_flow", []),
             "narrative": full.get("narrative", [])[-4:],
         }
 
@@ -129,43 +145,49 @@ class OperacionalReader:
             "module": "operacional_leitura_grafica",
             "symbol": self.symbol,
             "timeframe": self.timeframe,
-            "context": {"label": "Mercado sem clareza", "quality": 0, "risk": "alto"},
             "narrative": [message],
-            "candle_flow": [],
-            "confirmation": [],
-            "invalidation": [message],
-            "risk_management": {"scenario_risk": "alto", "quality": "baixa"},
+            "operacional_context": {"label": "Mercado sem clareza", "quality": 0, "risk": "alto"},
+            "operacional_score": 0,
+            "operacional_candle_flow": [],
+            "operacional_confirmations": [],
+            "operacional_invalidations": [message],
+            "operacional_risk": {"scenario_risk": "alto", "quality": "baixa"},
+            "operacional_signal": {"status": "analisando", "direction": "NEUTRO"},
+            "operacional_live": [message],
+            "operacional_chart": {"price_lines": [], "events": {}},
         }
 
     def _trend_context(self) -> dict[str, Any]:
         close = self.df["close"]
-        ema_short = close.ewm(span=9, adjust=False).mean()
-        ema_mid = close.ewm(span=21, adjust=False).mean()
-        ema_long = close.ewm(span=55, adjust=False).mean()
         last = float(close.iloc[-1])
-        slope = _pct(float(ema_mid.iloc[-1]), float(ema_mid.iloc[-8]))
         impulse = _pct(last, float(close.iloc[-18]))
-        highs = self.df["high"].rolling(5).max()
-        lows = self.df["low"].rolling(5).min()
-        higher_high = float(highs.iloc[-1]) > float(highs.iloc[-12])
-        higher_low = float(lows.iloc[-1]) > float(lows.iloc[-12])
-        lower_high = float(highs.iloc[-1]) < float(highs.iloc[-12])
-        lower_low = float(lows.iloc[-1]) < float(lows.iloc[-12])
+        swings = self._swing_points()
+        highs = swings["highs"]
+        lows = swings["lows"]
+        last_highs = highs[-3:]
+        last_lows = lows[-3:]
+        higher_high = len(last_highs) >= 2 and last_highs[-1]["price"] > last_highs[-2]["price"]
+        higher_low = len(last_lows) >= 2 and last_lows[-1]["price"] > last_lows[-2]["price"]
+        lower_high = len(last_highs) >= 2 and last_highs[-1]["price"] < last_highs[-2]["price"]
+        lower_low = len(last_lows) >= 2 and last_lows[-1]["price"] < last_lows[-2]["price"]
+        range_pct = (float(self.df["high"].tail(28).max()) - float(self.df["low"].tail(28).min())) / last * 100 if last else 0
+        close_position = (last - float(self.df["low"].tail(28).min())) / max(float(self.df["high"].tail(28).max()) - float(self.df["low"].tail(28).min()), last * 0.00001)
 
-        if last > float(ema_short.iloc[-1]) > float(ema_mid.iloc[-1]) > float(ema_long.iloc[-1]) and higher_high and higher_low:
+        if higher_high and higher_low:
             bias = "alta"
             structure = "Dow comprador: topos e fundos ascendentes"
-        elif last < float(ema_short.iloc[-1]) < float(ema_mid.iloc[-1]) < float(ema_long.iloc[-1]) and lower_high and lower_low:
+        elif lower_high and lower_low:
             bias = "baixa"
             structure = "Dow vendedor: topos e fundos descendentes"
-        elif abs(slope) < 0.08 and abs(impulse) < 1.2:
+        elif range_pct < 1.4 or 0.32 <= close_position <= 0.68:
             bias = "lateral"
             structure = "Faixa lateral com alternancia entre suporte e resistencia"
         else:
             bias = "neutro"
             structure = "Estrutura em transicao, sem sequencia limpa"
 
-        strength = min(100, max(0, int(abs(slope) * 18 + abs(impulse) * 8)))
+        directional_points = int(higher_high) + int(higher_low) + int(lower_high) + int(lower_low)
+        strength = min(100, max(0, int(abs(impulse) * 12 + directional_points * 18 + max(range_pct - 0.8, 0) * 4)))
         if strength >= 70:
             strength_label = "forte"
         elif strength >= 38:
@@ -176,11 +198,8 @@ class OperacionalReader:
         return {
             "bias": bias,
             "structure": structure,
-            "ema_short": _round(ema_short.iloc[-1]),
-            "ema_mid": _round(ema_mid.iloc[-1]),
-            "ema_long": _round(ema_long.iloc[-1]),
-            "slope_pct": _round(slope, 3),
             "impulse_pct": _round(impulse, 3),
+            "range_pct": _round(range_pct, 3),
             "strength": strength,
             "strength_label": strength_label,
             "dow": {
@@ -189,7 +208,28 @@ class OperacionalReader:
                 "lower_high": lower_high,
                 "lower_low": lower_low,
             },
+            "swings": {
+                "highs": last_highs,
+                "lows": last_lows,
+            },
         }
+
+    def _swing_points(self, window: int = 3) -> dict[str, list[dict[str, Any]]]:
+        highs = []
+        lows = []
+        limit = len(self.df) - window
+        for i in range(window, limit):
+            slice_high = self.df["high"].iloc[i - window: i + window + 1]
+            slice_low = self.df["low"].iloc[i - window: i + window + 1]
+            high = float(self.df["high"].iloc[i])
+            low = float(self.df["low"].iloc[i])
+            ts = self.df.index[i]
+            time_value = int(ts.timestamp()) if hasattr(ts, "timestamp") else i
+            if high >= float(slice_high.max()):
+                highs.append({"time": time_value, "price": _round(high)})
+            if low <= float(slice_low.min()):
+                lows.append({"time": time_value, "price": _round(low)})
+        return {"highs": highs[-8:], "lows": lows[-8:]}
 
     def _zones(self) -> dict[str, Any]:
         recent = self.df.tail(80)
@@ -399,13 +439,26 @@ class OperacionalReader:
         quality = "alta" if rr >= 1.8 and current["body_strength"] >= 45 else "media" if rr >= 1.1 else "baixa"
         return {
             "reference_price": _round(close),
+            "entry": _round(close),
             "technical_stop": _round(stop),
             "partial_target": _round(partial),
+            "take_profit_1": _round(partial),
+            "take_profit_2": _round(close + (partial - close) * 1.6 if partial >= close else close - (close - partial) * 1.6),
             "risk_reward": _round(rr, 2),
             "invalidation": "Perda da zona defendida ou fechamento contra o contexto.",
             "scenario_risk": risk_label,
             "entry_quality": quality,
             "positioning": "Aguardar confirmacao; foco em leitura contextual, nao em sinal automatico.",
+            "trade_plan": {
+                "entry": _round(close),
+                "stop": _round(stop),
+                "take_profit_1": _round(partial),
+                "take_profit_2": _round(close + (partial - close) * 1.6 if partial >= close else close - (close - partial) * 1.6),
+                "oco": {
+                    "enabled": True,
+                    "description": "Plano OCO educativo: stop tecnico na invalidação e alvos parciais na zona operacional seguinte.",
+                },
+            },
         }
 
     def _confirmations(self, trend, current, breakout, pullback, liquidity, risk):
@@ -489,6 +542,102 @@ class OperacionalReader:
         if risk["entry_quality"] == "alta" and len(confirmations) >= 2:
             return "Contexto bom para acompanhamento proximo, priorizando confirmacao e stop tecnico."
         return "Manter leitura ativa e buscar confirmacao antes de qualquer plano."
+
+    def _operational_score(self, context, confirmations, invalidations, current, pullback, breakout, liquidity, risk):
+        score = int(context.get("quality", 0))
+        score += min(18, len(confirmations) * 6)
+        score -= min(24, len(invalidations) * 8)
+        if current.get("body_strength", 0) >= 55:
+            score += 7
+        if pullback.get("valid_pullback"):
+            score += 8
+        if breakout.get("valid_breakout"):
+            score += 6
+        if liquidity.get("sweep"):
+            score -= 10
+        if risk.get("scenario_risk") == "alto":
+            score -= 14
+        elif risk.get("entry_quality") == "alta":
+            score += 8
+        return int(max(0, min(100, score)))
+
+    def _signal_payload(self, context, trend, confirmations, invalidations, risk, score):
+        if risk.get("scenario_risk") == "alto" or len(invalidations) > len(confirmations):
+            status = "aguardando confirmacao" if context.get("label") not in ["Contexto perigoso"] else "invalidado"
+        elif score >= 78 and len(confirmations) >= 3:
+            status = "entrada confirmada"
+        elif score >= 62 and len(confirmations) >= 2:
+            status = "entrada possivel"
+        else:
+            status = "aguardando confirmacao"
+
+        if trend.get("bias") == "alta" and status not in ["invalidado"]:
+            direction = "COMPRA"
+        elif trend.get("bias") == "baixa" and status not in ["invalidado"]:
+            direction = "VENDA"
+        else:
+            direction = "NEUTRO"
+
+        return {
+            "asset": self.symbol,
+            "symbol": self.symbol,
+            "timeframe": self.timeframe,
+            "direction": direction,
+            "context": context.get("label"),
+            "entry": risk.get("entry"),
+            "stop": risk.get("technical_stop"),
+            "take_profit_1": risk.get("take_profit_1"),
+            "take_profit_2": risk.get("take_profit_2"),
+            "risk_reward": risk.get("risk_reward"),
+            "operational_reason": confirmations[0] if confirmations else "Aguardar confirmacao do proximo candle.",
+            "confirmation": confirmations,
+            "invalidation": invalidations or [risk.get("invalidation")],
+            "status": status,
+            "score": score,
+        }
+
+    def _live_messages(self, context, trend, breakout, pullback, liquidity, signal):
+        messages = []
+        if trend.get("bias") == "alta":
+            messages.append("Contexto de alta por topos e fundos.")
+        elif trend.get("bias") == "baixa":
+            messages.append("Contexto de baixa por topos e fundos.")
+        elif trend.get("bias") == "lateral":
+            messages.append("Mercado lateralizado. Evitar entrada.")
+        if pullback.get("valid_pullback"):
+            messages.append("Pullback valido em regiao operacional.")
+        if pullback.get("pullback_failure"):
+            messages.append("Falha de pullback detectada.")
+        if breakout.get("false_breakout"):
+            messages.append("Falso rompimento identificado.")
+        if liquidity.get("sweep"):
+            messages.append("Liquidez capturada.")
+        if signal.get("status") == "entrada possivel":
+            messages.append("Entrada operacional possivel.")
+        elif signal.get("status") == "invalidado":
+            messages.append("Entrada invalidada pela perda do contexto.")
+        else:
+            messages.append("Aguardar confirmacao do proximo candle.")
+        return messages[:8]
+
+    def _chart_marks(self, zones, risk, breakout, pullback, liquidity):
+        return {
+            "price_lines": [
+                {"type": "support", "label": "Suporte", "price": zones.get("support"), "color": "#22C55E"},
+                {"type": "resistance", "label": "Resistencia", "price": zones.get("resistance"), "color": "#EF4444"},
+                {"type": "liquidity_upper", "label": "Liquidez sup.", "price": zones.get("upper_liquidity"), "color": "#D4AF37"},
+                {"type": "liquidity_lower", "label": "Liquidez inf.", "price": zones.get("lower_liquidity"), "color": "#38BDF8"},
+                {"type": "entry", "label": "Entrada", "price": risk.get("entry"), "color": "#38BDF8"},
+                {"type": "stop", "label": "Stop", "price": risk.get("technical_stop"), "color": "#EF4444"},
+                {"type": "take_profit", "label": "Take", "price": risk.get("take_profit_1"), "color": "#22C55E"},
+            ],
+            "events": {
+                "false_breakout": breakout.get("false_breakout"),
+                "pullback": pullback.get("valid_pullback"),
+                "pullback_failure": pullback.get("pullback_failure"),
+                "liquidity_sweep": liquidity.get("sweep"),
+            },
+        }
 
     def _narrative(self, context, trend, current, breakout, pullback, liquidity, risk):
         lines = [f"{context['label']}: {trend['structure']}."]

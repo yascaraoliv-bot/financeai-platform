@@ -9,6 +9,10 @@
     </div>
 
     <div class="replay-controls">
+        <select id="replayMode" class="form-control-premium">
+            <option value="operacional">Replay Operacional Leitura Grafica</option>
+            <option value="complete">Replay IA Completa</option>
+        </select>
         <select id="replayMarket" class="form-control-premium"><option value="crypto">Criptomoedas</option></select>
         <select id="replayAsset" class="form-control-premium"><option value="BTCUSDT">BTCUSDT</option></select>
         <select id="replayTimeframe" class="form-control-premium">
@@ -41,7 +45,7 @@
     <div class="live-grid">
         <section class="live-chart-panel">
             <div class="chart-header-pro">
-                <h3>Replay IA - <span id="replayTitle">--</span></h3>
+                <h3><span id="replayModeTitle">Replay Operacional Leitura Grafica</span> - <span id="replayTitle">--</span></h3>
                 <span class="badge-ai" id="replayClock">--</span>
             </div>
             <div id="replayChart" class="live-chart"></div>

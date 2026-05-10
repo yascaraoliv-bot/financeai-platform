@@ -5,10 +5,10 @@
         market: 'crypto',
         chart: null,
         candleSeries: null,
-        volumeSeries: null,
         zoneLines: [],
         controller: null,
         assetsByMarket: {},
+        liveTimer: null,
     };
 
     const $ = (id) => document.getElementById(id);
@@ -99,12 +99,6 @@
             wickUpColor: '#22C55E',
             wickDownColor: '#EF4444',
         });
-        state.volumeSeries = state.chart.addHistogramSeries({
-            color: 'rgba(212, 175, 55, 0.28)',
-            priceFormat: { type: 'volume' },
-            priceScaleId: '',
-            scaleMargins: { top: 0.82, bottom: 0 },
-        });
     }
 
     function resizeChart() {
@@ -124,13 +118,15 @@
         setLoading();
         try {
             const [candlesResponse, analysisResponse] = await Promise.all([
-                fetch(`/api/candles/${state.symbol}/${state.timeframe}?limit=260`, { signal: state.controller.signal }),
+                fetch(`/api/operacional/candles/${state.symbol}/${state.timeframe}?limit=260`, { signal: state.controller.signal }),
                 fetch(`/api/operacional/analysis/${state.symbol}/${state.timeframe}?limit=260`, { signal: state.controller.signal }),
             ]);
             const candlesData = await candlesResponse.json();
             const analysis = await analysisResponse.json();
             renderChart(candlesData);
             renderAnalysis(analysis, candlesData);
+            refreshLive();
+            scheduleLive();
         } catch (error) {
             if (error.name !== 'AbortError') {
                 renderError(error);
@@ -147,7 +143,6 @@
     function renderChart(data) {
         if (!data?.candles?.length || !state.candleSeries) return;
         state.candleSeries.setData(data.candles);
-        state.volumeSeries?.setData(data.volumes || []);
         state.chart?.timeScale().fitContent();
         setText('opSymbol', data.symbol || state.symbol);
         setText('opMarket', data.market_label || data.market || '--');
@@ -160,25 +155,33 @@
             renderError(new Error(data?.error || 'Leitura operacional indisponivel.'));
             return;
         }
-        setText('opContext', data.dominant_context || '--');
-        setText('opBias', data.directional_bias || '--');
-        setText('opDominantContext', data.dominant_context || 'MERCADO SEM CLAREZA');
-        setText('opMovementStrength', data.movement_strength || '--');
-        setText('opQuality', `${data.context?.quality ?? '--'}%`);
-        setText('opScenarioRisk', data.risk_management?.scenario_risk || data.context?.risk || '--');
+        const opContext = data.operacional_context || {};
+        const opTrend = data.operacional_trend || {};
+        const opRisk = data.operacional_risk || {};
+        const opSignal = data.operacional_signal || {};
+        const opChart = data.operacional_chart || {};
+
+        setText('opContext', opContext.label || '--');
+        setText('opBias', opTrend.bias || '--');
+        setText('opDominantContext', opContext.label || 'MERCADO SEM CLAREZA');
+        setText('opMovementStrength', opTrend.strength_label || '--');
+        setText('opQuality', `${opContext.quality ?? '--'}%`);
+        setText('opScenarioRisk', opRisk.scenario_risk || opContext.risk || '--');
         setText('opTiming', data.timing || '--');
         setText('opMainNarrative', data.narrative?.[0] || '--');
         setText('opRecommendation', data.operational_recommendation || '--');
         setText('opChartTitle', `${data.symbol || state.symbol} · ${data.timeframe || state.timeframe}`);
 
         renderNarrative(data.narrative || []);
-        renderCandleFlow(data.candle_flow || []);
+        renderCandleFlow(data.operacional_candle_flow || []);
         renderStructure(data);
-        renderList('opConfirmations', data.confirmation || [], 'check-circle');
-        renderList('opInvalidations', data.invalidation || [], 'triangle-exclamation');
-        renderRisk(data.risk_management || {});
-        renderZoneLines(data.zones || {}, candlePayload?.candles || []);
-        updateContextState(data.context);
+        renderList('opConfirmations', data.operacional_confirmations || [], 'check-circle');
+        renderList('opInvalidations', data.operacional_invalidations || [], 'triangle-exclamation');
+        renderRisk(opRisk);
+        renderLiveFeed(data.operacional_live || []);
+        renderOperationalSignal(opSignal);
+        renderZoneLines(opChart.price_lines || [], data.operacional_zones || {}, candlePayload?.candles || []);
+        updateContextState(opContext);
     }
 
     function renderNarrative(items) {
@@ -213,12 +216,12 @@
     }
 
     function renderStructure(data) {
-        const zones = data.zones || {};
-        const trend = data.trend || {};
-        const liquidity = data.liquidity || {};
-        const breakout = data.breakout || {};
-        const pullback = data.pullback || {};
-        const fib = data.fibonacci || {};
+        const zones = data.operacional_zones || {};
+        const trend = data.operacional_trend || {};
+        const liquidity = data.operacional_liquidity || {};
+        const breakout = data.operacional_breakout || {};
+        const pullback = data.operacional_pullback || {};
+        const fib = data.operacional_fibonacci || {};
         const rows = [
             ['Estrutura', trend.structure],
             ['Suporte', formatPrice(zones.support)],
@@ -255,16 +258,60 @@
         )).join('');
     }
 
-    function renderZoneLines(zones, candles) {
+    function renderLiveFeed(items) {
+        renderList('opLiveFeed', items || [], 'satellite-dish');
+    }
+
+    function renderOperationalSignal(signal) {
+        const rows = [
+            ['Ativo', signal.asset || signal.symbol || state.symbol],
+            ['Timeframe', signal.timeframe || state.timeframe],
+            ['Direcao', signal.direction || 'NEUTRO'],
+            ['Status', signal.status || 'analisando'],
+            ['Entrada', formatPrice(signal.entry)],
+            ['Stop', formatPrice(signal.stop)],
+            ['Take 1', formatPrice(signal.take_profit_1)],
+            ['Take 2', formatPrice(signal.take_profit_2)],
+            ['R/R', signal.risk_reward ? `${signal.risk_reward}:1` : '--'],
+            ['Motivo', signal.operational_reason || '--'],
+        ];
+        $('opSignalBox').innerHTML = rows.map(([label, value]) => (
+            `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || '--')}</strong></div>`
+        )).join('');
+    }
+
+    async function refreshLive() {
+        try {
+            const response = await fetch(`/api/operacional/live/${state.symbol}/${state.timeframe}?limit=260`);
+            const data = await response.json();
+            if (data?.success) {
+                renderLiveFeed(data.operacional_live || []);
+                renderOperationalSignal(data.operacional_signal || {});
+            }
+        } catch (error) {
+            // Mantem a ultima leitura visivel.
+        }
+    }
+
+    function scheduleLive() {
+        clearInterval(state.liveTimer);
+        state.liveTimer = setInterval(refreshLive, 12000);
+    }
+
+    function renderZoneLines(markLines, zones, candles) {
         if (!state.candleSeries || !candles.length) return;
         state.zoneLines.forEach((line) => state.candleSeries.removePriceLine(line));
         state.zoneLines = [];
-        [
+        const lines = Array.isArray(markLines) && markLines.length ? markLines : [
             ['Suporte', zones.support, '#22C55E'],
             ['Resistencia', zones.resistance, '#EF4444'],
             ['Liquidez sup.', zones.upper_liquidity, '#D4AF37'],
             ['Liquidez inf.', zones.lower_liquidity, '#38BDF8'],
-        ].forEach(([title, price, color]) => {
+        ].map(([label, price, color]) => ({ label, price, color }));
+        lines.forEach((line) => {
+            const title = line.label;
+            const price = line.price;
+            const color = line.color;
             if (Number.isFinite(Number(price))) {
                 state.zoneLines.push(state.candleSeries.createPriceLine({
                     price: Number(price),

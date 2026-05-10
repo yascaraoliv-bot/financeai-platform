@@ -6,6 +6,7 @@ class ReplayDashboard {
         this.candleSeries = null;
         this.volumeSeries = null;
         this.currentMarket = 'crypto';
+        this.mode = 'operacional';
         this.lastVoiceState = '';
         this.lastVoiceSignal = '';
         this.init();
@@ -39,6 +40,10 @@ class ReplayDashboard {
             this.currentMarket = event.target.value;
             await this.loadAssets();
         });
+        document.getElementById('replayMode')?.addEventListener('change', (event) => {
+            this.mode = event.target.value;
+            this.setText('replayModeTitle', this.modeLabel());
+        });
         document.getElementById('replayStartBtn')?.addEventListener('click', () => this.start());
         document.getElementById('replayPauseBtn')?.addEventListener('click', () => this.pause());
         document.getElementById('replayResumeBtn')?.addEventListener('click', () => this.play());
@@ -71,7 +76,8 @@ class ReplayDashboard {
             end_date: this.dateValue('replayEnd'),
             speed: Number(document.getElementById('replaySpeed').value || 1),
         };
-        const data = await this.post('/api/replay/start', payload);
+        this.mode = document.getElementById('replayMode')?.value || this.mode;
+        const data = await this.post(this.replayUrl('start'), payload);
         if (!data.success) {
             this.toast(data.message || data.error || 'Falha ao iniciar replay', 'error');
             return;
@@ -90,17 +96,17 @@ class ReplayDashboard {
 
     async pause() {
         clearInterval(this.timer);
-        if (this.sessionId) this.render(await this.post('/api/replay/pause', { session_id: this.sessionId }));
+        if (this.sessionId) this.render(await this.post(this.replayUrl('pause'), { session_id: this.sessionId }));
     }
 
     async reset() {
         clearInterval(this.timer);
-        if (this.sessionId) this.render(await this.post('/api/replay/reset', { session_id: this.sessionId }));
+        if (this.sessionId) this.render(await this.post(this.replayUrl('reset'), { session_id: this.sessionId }));
     }
 
     async step(direction = 1, manual = false) {
         if (!this.sessionId) return;
-        const data = await this.post('/api/replay/step', { session_id: this.sessionId, direction });
+        const data = await this.post(this.replayUrl('step'), { session_id: this.sessionId, direction });
         this.render(data);
         if (manual) clearInterval(this.timer);
         if (data.finished) {
@@ -117,8 +123,10 @@ class ReplayDashboard {
     render(data) {
         if (!data?.success) return;
         this.candleSeries.setData(data.candles || []);
-        this.volumeSeries.setData(data.volumes || []);
+        this.volumeSeries.setData(data.mode === 'operacional' ? [] : (data.volumes || []));
         const live = data.live_status || {};
+        this.mode = data.mode || this.mode;
+        this.setText('replayModeTitle', this.modeLabel());
         this.setText('replayTitle', `${data.symbol} · ${data.timeframe}`);
         this.setText('replayClock', new Date((data.current_time || 0) * 1000).toLocaleString('pt-BR'));
         this.setText('replayOperationalStatus', live.status || '--');
@@ -187,6 +195,14 @@ class ReplayDashboard {
     async post(url, payload) {
         const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
         return response.json();
+    }
+
+    replayUrl(action) {
+        return this.mode === 'operacional' ? `/api/replay/operacional/${action}` : `/api/replay/${action}`;
+    }
+
+    modeLabel() {
+        return this.mode === 'operacional' ? 'Replay Operacional Leitura Grafica' : 'Replay IA Completa';
     }
 
     dateValue(id) {
