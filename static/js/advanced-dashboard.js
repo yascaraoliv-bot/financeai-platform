@@ -304,7 +304,9 @@ class AdvancedDashboard {
         this.clearPriceLines();
         if (analysis?.levels) this.addTradePriceLines(analysis.levels);
         if (analysis) this.addInstitutionalPriceLines(analysis);
-        this.candleSeries.setMarkers(Array.isArray(analysis?.markers) ? analysis.markers : []);
+        const baseMarkers = Array.isArray(analysis?.markers) ? analysis.markers : [];
+        const aiMarkers = window.VisualAIOverlays?.buildCompleteMarkers(candleData, analysis) || [];
+        window.VisualAIOverlays?.set(this.candleSeries, baseMarkers, aiMarkers) || this.candleSeries.setMarkers(baseMarkers);
         if (fit) this.chart.timeScale().fitContent();
     }
 

@@ -124,6 +124,10 @@ class ReplayDashboard {
         if (!data?.success) return;
         this.candleSeries.setData(data.candles || []);
         this.volumeSeries.setData(data.mode === 'operacional' ? [] : (data.volumes || []));
+        const markers = data.mode === 'operacional'
+            ? (window.VisualAIOverlays?.buildOperationalMarkers(data.candles || [], data.operacional_reading || data) || [])
+            : (window.VisualAIOverlays?.buildCompleteMarkers(data.candles || [], data.live_status || {}) || []);
+        window.VisualAIOverlays?.set(this.candleSeries, [], markers);
         const live = data.live_status || {};
         this.mode = data.mode || this.mode;
         this.setText('replayModeTitle', this.modeLabel());

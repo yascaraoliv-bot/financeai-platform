@@ -180,6 +180,8 @@
         renderRisk(opRisk);
         renderLiveFeed(data.operacional_live || []);
         renderOperationalSignal(opSignal);
+        const markers = window.VisualAIOverlays?.buildOperationalMarkers(candlePayload?.candles || [], data) || [];
+        window.VisualAIOverlays?.set(state.candleSeries, [], markers);
         renderZoneLines(opChart.price_lines || [], data.operacional_zones || {}, candlePayload?.candles || []);
         updateContextState(opContext);
     }

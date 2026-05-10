@@ -6,6 +6,7 @@ class LiveTradingDashboard {
         this.chart = null;
         this.candleSeries = null;
         this.volumeSeries = null;
+        this.lastCandles = [];
         this.priceLines = [];
         this.socket = null;
         this.statusController = null;
@@ -155,6 +156,7 @@ class LiveTradingDashboard {
             if (!data.success) throw new Error(data.error || 'candles_unavailable');
             const candles = Array.isArray(data.candles) ? data.candles : [];
             const volumes = Array.isArray(data.volumes) ? data.volumes : [];
+            this.lastCandles = candles;
             this.candleSeries.setData(candles);
             this.volumeSeries.setData(volumes);
             const last = candles[candles.length - 1] || {};
@@ -211,6 +213,7 @@ class LiveTradingDashboard {
             color: candle.close >= candle.open ? 'rgba(38, 166, 154, 0.45)' : 'rgba(239, 83, 80, 0.45)',
         };
         this.candleSeries.update(candle);
+        this.lastCandles = [...this.lastCandles.filter((item) => item.time !== candle.time), candle].slice(-260);
         this.volumeSeries.update(volume);
         this.setText('livePrice', this.formatPrice(candle.close));
         this.lastCandleTime = candle.time;
@@ -267,6 +270,14 @@ class LiveTradingDashboard {
         this.renderInvalidations(data.invalidations || []);
         this.supportResistance = data.support_resistance || {};
         this.renderPriceLines(data);
+        const markers = window.VisualAIOverlays?.buildCompleteMarkers(this.lastCandles, {
+            signal_cards: { active: data.probable_direction === 'BUY' ? 'buy' : data.probable_direction === 'SELL' ? 'sell' : 'wait', label: data.status },
+            technical_reader: data.technical || {},
+            smc: data.smc || {},
+            volume_analysis: data.volume || {},
+            tape_reading: data.tape_reading || {},
+        }) || [];
+        window.VisualAIOverlays?.set(this.candleSeries, [], markers);
         this.applyStateVisual(state);
         this.handleAlerts(data.alerts || [], data.status || state);
         this.handleVoiceStatus(data);

@@ -6,6 +6,7 @@ class OperacionalLiveDashboard {
         this.chart = null;
         this.candleSeries = null;
         this.priceLines = [];
+        this.lastCandles = [];
         this.socket = null;
         this.statusTimer = null;
         this.statusController = null;
@@ -120,6 +121,7 @@ class OperacionalLiveDashboard {
             const data = await response.json();
             if (!data.success) throw new Error(data.error || 'candles_unavailable');
             const candles = Array.isArray(data.candles) ? data.candles : [];
+            this.lastCandles = candles;
             this.candleSeries.setData(candles);
             const last = candles[candles.length - 1] || {};
             this.streaming = data.streaming ?? String(this.symbol).endsWith('USDT');
@@ -155,6 +157,7 @@ class OperacionalLiveDashboard {
                 close: Number(kline.c),
             };
             this.candleSeries.update(candle);
+            this.lastCandles = [...this.lastCandles.filter((item) => item.time !== candle.time), candle].slice(-260);
             this.setText('opLivePrice', this.formatPrice(candle.close));
             if (kline.x) {
                 this.fetchStatus('new_candle');
@@ -209,6 +212,8 @@ class OperacionalLiveDashboard {
         this.setText('opLiveMarketStatus', status.market_status || status.market_status_raw || '--');
         document.getElementById('opLiveStatusCard').dataset.state = status.state || 'AGUARDAR';
         this.pushMessages(status.messages || []);
+        const markers = window.VisualAIOverlays?.buildOperationalMarkers(this.lastCandles, status) || [];
+        window.VisualAIOverlays?.set(this.candleSeries, [], markers);
         this.renderPriceLines(status.chart_marks?.price_lines || []);
         this.speak(status.messages?.[0] || status.reason || '');
     }
