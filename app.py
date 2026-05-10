@@ -22,6 +22,7 @@ from ia.live_trading import build_live_status
 from ia.live_signals import LiveSignalManager
 from ia.market_data_router import MarketDataRouter
 from ia.operational_signal import build_operational_signal
+from ia.operacional_reader import build_candle_flow, build_operacional_context, build_operacional_reading
 from ia.replay_engine import ReplayEngine
 from ia.smart_money import analyze_smart_money
 from ia.technical_reader import read_technical
@@ -551,6 +552,12 @@ def live():
 @login_required
 def replay():
     return render_template("replay.html")
+
+
+@app.route("/operacional")
+@login_required
+def operacional():
+    return render_template("operacional.html")
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -1102,6 +1109,61 @@ def api_replay_results():
         return jsonify(sanitize_json(session.results()))
     except Exception as error:
         return jsonify({"success": False, "error": str(error)}), 200
+
+
+@app.route("/api/operacional/analysis/<symbol>/<timeframe>")
+@login_required
+def api_operacional_analysis(symbol, timeframe):
+    symbol = normalize_symbol(symbol)
+    timeframe = normalize_timeframe(timeframe)
+    try:
+        limit = int(request.args.get("limit", 240))
+        df = load_market_data(symbol, timeframe, limit)
+        meta = market.last_meta(symbol)
+        payload = build_operacional_reading(df, symbol, timeframe)
+        payload.update({
+            "source": meta.get("source"),
+            "market": meta.get("market"),
+            "market_label": meta.get("market_label"),
+            "market_status": meta.get("market_status"),
+            "market_message": meta.get("message"),
+        })
+        return jsonify(sanitize_json(payload))
+    except Exception as error:
+        return jsonify(sanitize_json({
+            "success": False,
+            "module": "operacional_leitura_grafica",
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "error": str(error),
+            "narrative": ["Nao foi possivel gerar leitura operacional para este ativo agora."],
+        })), 200
+
+
+@app.route("/api/operacional/context/<symbol>/<timeframe>")
+@login_required
+def api_operacional_context(symbol, timeframe):
+    symbol = normalize_symbol(symbol)
+    timeframe = normalize_timeframe(timeframe)
+    try:
+        limit = int(request.args.get("limit", 240))
+        df = load_market_data(symbol, timeframe, limit)
+        return jsonify(sanitize_json(build_operacional_context(df, symbol, timeframe)))
+    except Exception as error:
+        return jsonify({"success": False, "symbol": symbol, "timeframe": timeframe, "error": str(error)}), 200
+
+
+@app.route("/api/operacional/candle-flow/<symbol>/<timeframe>")
+@login_required
+def api_operacional_candle_flow(symbol, timeframe):
+    symbol = normalize_symbol(symbol)
+    timeframe = normalize_timeframe(timeframe)
+    try:
+        limit = int(request.args.get("limit", 120))
+        df = load_market_data(symbol, timeframe, limit)
+        return jsonify(sanitize_json(build_candle_flow(df, symbol, timeframe)))
+    except Exception as error:
+        return jsonify({"success": False, "symbol": symbol, "timeframe": timeframe, "error": str(error), "candle_flow": []}), 200
 
 
 @app.route("/api/heatmap")
