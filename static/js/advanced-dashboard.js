@@ -9,8 +9,21 @@ class AdvancedDashboard {
         this.priceLines = [];
         this.refreshTimer = null;
         this.klineSocket = null;
+        this.tradeWindow = [];
+        this.alerts = [];
+        this.triggeredAlerts = new Set();
+        this.equityChart = null;
+        this.equitySeries = null;
         this.isLoading = false;
+        this.operationalState = 'loading';
+        this.lastInvalidationToast = { signature: null, time: 0 };
         this.refreshMs = 10000;
+        this.requestSeq = 0;
+        this.candleController = null;
+        this.analysisController = null;
+        this.localCacheTtl = 8000;
+        this.candleMemoryCache = new Map();
+        this.analysisMemoryCache = new Map();
         this.init();
     }
 
@@ -39,8 +52,13 @@ class AdvancedDashboard {
         });
 
         document.getElementById('btnRunBacktest')?.addEventListener('click', () => this.runBacktest());
+        document.getElementById('btnAddWatch')?.addEventListener('click', () => this.addCurrentToWatchlist());
+        document.getElementById('btnCreateAlert')?.addEventListener('click', () => this.createPriceAlert());
         document.querySelector('[data-chart-action="fit"]')?.addEventListener('click', () => this.chart?.timeScale().fitContent());
         window.addEventListener('resize', () => this.resizeChart());
+        if ('Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission().catch(() => {});
+        }
     }
 
     async loadAssets() {
@@ -133,51 +151,183 @@ class AdvancedDashboard {
     }
 
     async updateDashboard(fit = false) {
-        if (this.isLoading) return;
+        this.requestSeq += 1;
+        const seq = this.requestSeq;
+        this.candleController?.abort();
+        this.analysisController?.abort();
+        this.candleController = new AbortController();
+        this.analysisController = new AbortController();
         this.isLoading = true;
         this.setConnectionState('Atualizando');
+        this.setChartLoading('Carregando grafico...');
+        this.setOperationalState({
+            state: 'loading',
+            message: 'Analisando IA...'
+        });
 
         try {
-            const [candlesResponse, analysisResponse] = await Promise.all([
-                fetch(`/api/candles/${this.currentAsset}/${this.currentTimeframe}?limit=600`),
-                fetch(`/api/analysis/${this.currentAsset}/${this.currentTimeframe}`),
-            ]);
-            const candles = await candlesResponse.json();
-            const analysis = await analysisResponse.json();
-
+            const candles = await this.fetchCandles(this.currentAsset, this.currentTimeframe, 200, this.candleController.signal);
+            if (seq !== this.requestSeq) return;
             if (!candles.success) throw new Error(candles.error || 'Erro nos candles');
-            if (!analysis.success) throw new Error(analysis.error || 'Erro na analise');
 
-            this.updateChart(candles, analysis, fit);
+            this.updateChart(candles, null, fit);
+            this.setChartLoading('');
+            this.connectMarketStreams();
+
+            let analysis = this.createNeutralAnalysis(candles);
             this.updateAnalysisPanel(analysis, candles);
-            this.connectKlineStream();
-            await Promise.all([this.updateMultiTimeframe(), this.updateHeatmap()]);
+            this.loadAnalysisInBackground(candles, seq);
+            Promise.allSettled([this.updateMultiTimeframe(), this.updateHeatmap(), this.loadWatchlist(), this.loadAlerts()]);
             this.setConnectionState('Tempo real');
         } catch (error) {
+            if (error.name === 'AbortError') return;
             console.error(error);
             this.setConnectionState('Falha');
+            this.setChartLoading('Nao foi possivel carregar candles.');
             this.showNotification(`Erro ao atualizar: ${error.message}`, 'error');
         } finally {
-            this.isLoading = false;
+            if (seq === this.requestSeq) this.isLoading = false;
         }
     }
 
+    async loadAnalysisInBackground(candles, seq) {
+        this.setOperationalState({ state: 'loading', message: 'Analisando IA...' });
+        try {
+            const analysis = await this.fetchAnalysis(this.currentAsset, this.currentTimeframe, this.analysisController.signal);
+            if (seq !== this.requestSeq) return;
+            const payload = analysis?.success ? analysis : this.createNeutralAnalysis(candles);
+            this.updateChart(candles, payload, false);
+            this.updateAnalysisPanel(payload, candles);
+        } catch (error) {
+            if (error.name === 'AbortError') return;
+            console.warn('Falha na IA, mantendo grafico:', error);
+            if (seq === this.requestSeq) {
+                this.updateAnalysisPanel(this.createNeutralAnalysis(candles), candles);
+            }
+        }
+    }
+
+    async fetchCandles(symbol, timeframe, limit, signal) {
+        const key = `candles:${symbol}:${timeframe}:${limit}`;
+        const cached = this.getLocalCache(this.candleMemoryCache, key);
+        if (cached) return cached;
+        const response = await fetch(`/api/candles/${symbol}/${timeframe}?limit=${limit}`, { signal });
+        const data = await response.json();
+        if (data?.success) this.setLocalCache(this.candleMemoryCache, key, data);
+        return data;
+    }
+
+    async fetchAnalysis(symbol, timeframe, signal) {
+        const key = `analysis:${symbol}:${timeframe}`;
+        const cached = this.getLocalCache(this.analysisMemoryCache, key);
+        if (cached) return cached;
+        const response = await fetch(`/api/analysis/${symbol}/${timeframe}`, { signal });
+        const data = await response.json();
+        if (data?.success) this.setLocalCache(this.analysisMemoryCache, key, data);
+        return data;
+    }
+
+    getLocalCache(cache, key) {
+        const record = cache.get(key);
+        if (!record || Date.now() - record.time > this.localCacheTtl) {
+            cache.delete(key);
+            return null;
+        }
+        return record.data;
+    }
+
+    setLocalCache(cache, key, data) {
+        cache.set(key, { time: Date.now(), data });
+    }
+
+    setChartLoading(message) {
+        const container = document.getElementById('chart-container');
+        if (!container) return;
+        let overlay = container.querySelector('.chart-loading');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.className = 'chart-loading';
+            container.appendChild(overlay);
+        }
+        overlay.textContent = message || '';
+        overlay.style.display = message ? 'grid' : 'none';
+    }
+
     updateChart(candles, analysis, fit = false) {
-        this.candleSeries.setData(candles.candles);
-        this.volumeSeries.setData(candles.volumes);
+        const candleData = Array.isArray(candles?.candles) ? candles.candles.filter(Boolean) : [];
+        const volumeData = Array.isArray(candles?.volumes) ? candles.volumes.filter(Boolean) : [];
+        if (!candleData.length) {
+            this.setOperationalState({ state: 'neutral', message: 'Sem candles validos para renderizar.' });
+            return;
+        }
+        this.candleSeries.setData(candleData);
+        this.volumeSeries.setData(volumeData);
         Object.entries(candles.overlays || {}).forEach(([key, values]) => {
-            this.overlaySeries[key]?.setData(values);
+            this.overlaySeries[key]?.setData(Array.isArray(values) ? values.filter(Boolean) : []);
         });
 
         this.clearPriceLines();
-        this.addTradePriceLines(analysis.levels);
-        this.candleSeries.setMarkers(analysis.markers || []);
+        if (analysis?.levels) this.addTradePriceLines(analysis.levels);
+        this.candleSeries.setMarkers(Array.isArray(analysis?.markers) ? analysis.markers : []);
         if (fit) this.chart.timeScale().fitContent();
     }
 
-    connectKlineStream() {
-        const stream = `${this.currentAsset.toLowerCase()}@kline_${this.currentTimeframe}`;
-        const url = `wss://stream.binance.com:9443/ws/${stream}`;
+    createNeutralAnalysis(candlesPayload) {
+        const lastCandle = Array.isArray(candlesPayload?.candles) && candlesPayload.candles.length
+            ? candlesPayload.candles[candlesPayload.candles.length - 1]
+            : { close: 0 };
+        const price = Number(lastCandle.close || candlesPayload?.ticker?.lastPrice || 0);
+        return {
+            success: true,
+            symbol: this.currentAsset,
+            timeframe: this.currentTimeframe,
+            current_price: price,
+            price_change: Number(candlesPayload?.ticker?.priceChangePercent || 0),
+            signal: {
+                signal_type: 'neutro',
+                confidence: 0,
+                indicators: {
+                    rsi: 50,
+                    macd: 0,
+                    atr: 0,
+                    volume: 0,
+                    vwap: price,
+                    ema9: price,
+                    ema21: price,
+                    bollinger_lower: price,
+                    bollinger_upper: price,
+                },
+            },
+            levels: {},
+            support_resistance: [],
+            candle_reading: [],
+            reasoning: ['Analise indisponivel. Grafico mantido em modo neutro.'],
+            operational_score: 0,
+            final_score: {
+                score: 0,
+                confidence: 0,
+                signal: 'NEUTRAL',
+                classification: 'Nao operar',
+                entry_aggressive: false,
+                entry_conservative: false,
+                technical_reasons: ['Grafico renderizado sem dependencia da IA.'],
+                invalidation_reasons: [],
+            },
+            validation: { entry_quality: { quality: 'neutra', probability: 0, invalidated: false } },
+            smc: {},
+            volume_analysis: {},
+            operational_state: {
+                state: 'neutral',
+                message: 'Cenario neutro / sem entrada no momento.',
+                ready: false,
+            },
+        };
+    }
+
+    connectMarketStreams() {
+        const symbol = this.currentAsset.toLowerCase();
+        const streams = [`${symbol}@kline_${this.currentTimeframe}`, `${symbol}@aggTrade`].join('/');
+        const url = `wss://stream.binance.com:9443/stream?streams=${streams}`;
         if (this.klineSocket?.url === url && this.klineSocket.readyState <= 1) return;
         if (this.klineSocket) this.klineSocket.close();
 
@@ -185,7 +335,13 @@ class AdvancedDashboard {
         this.klineSocket.onopen = () => this.setConnectionState('WebSocket');
         this.klineSocket.onmessage = (event) => {
             const payload = JSON.parse(event.data);
-            const kline = payload.k;
+            const stream = payload.stream || '';
+            const data = payload.data || {};
+            if (stream.includes('@aggTrade')) {
+                this.handleTradeStream(data);
+                return;
+            }
+            const kline = data.k;
             if (!kline) return;
             const candle = {
                 time: Math.floor(kline.t / 1000),
@@ -207,6 +363,54 @@ class AdvancedDashboard {
         this.klineSocket.onclose = () => {
             if (!document.hidden) this.setConnectionState('Reconectando');
         };
+    }
+
+    handleTradeStream(trade) {
+        if (!trade?.p) return;
+        const price = Number(trade.p);
+        const quantity = Number(trade.q);
+        const side = trade.m ? 'sell' : 'buy';
+        const now = Date.now();
+        this.tradeWindow.push(now);
+        this.tradeWindow = this.tradeWindow.filter((time) => now - time < 1000);
+        this.setText('tradeSpeed', this.tradeWindow.length);
+        this.checkRealtimeAlerts(price);
+
+        const tape = document.getElementById('tradeTape');
+        if (!tape) return;
+        const row = document.createElement('div');
+        row.className = `trade-row ${side}`;
+        row.innerHTML = `
+            <span>${side.toUpperCase()}</span>
+            <span>${this.formatPrice(price)}</span>
+            <span>${this.formatCompact(quantity)}</span>
+        `;
+        tape.prepend(row);
+        while (tape.children.length > 24) tape.lastElementChild.remove();
+    }
+
+    checkRealtimeAlerts(price) {
+        this.alerts.forEach((alert) => {
+            if (!alert.active || alert.symbol !== this.currentAsset || this.triggeredAlerts.has(alert.id)) return;
+            const target = Number(alert.target);
+            const hit = alert.condition_type === 'price_above'
+                ? price >= target
+                : alert.condition_type === 'price_below'
+                    ? price <= target
+                    : Math.abs(price - target) / target < 0.0005;
+            if (!hit) return;
+            this.triggeredAlerts.add(alert.id);
+            const message = `Alerta ${alert.symbol}: preco ${this.formatPrice(price)} atingiu ${this.formatPrice(target)}`;
+            this.showNotification(message, 'success');
+            if ('Notification' in window && Notification.permission === 'granted') {
+                new Notification('FinanceAI', { body: message });
+            }
+            fetch('/api/telegram/test', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message }),
+            }).catch(() => {});
+        });
     }
 
     clearPriceLines() {
@@ -236,39 +440,141 @@ class AdvancedDashboard {
     }
 
     updateAnalysisPanel(analysis, candlesPayload) {
-        const signal = analysis.signal;
-        const indicators = signal.indicators;
+        analysis = analysis || this.createNeutralAnalysis(candlesPayload);
+        const signal = analysis.signal || {};
+        const indicators = signal.indicators || {};
         const ticker = analysis.ticker || candlesPayload.ticker || {};
-        const score = analysis.operational_score;
+        const confluenceAI = analysis.confluence_ai || {};
+        const finalScore = analysis.final_score || {};
+        const score = Number(confluenceAI.score ?? analysis.operational_score ?? 0);
+        const gaugeScore = confluenceAI.score != null ? score : Number(analysis.operational_score || 0);
+        const finalScore10 = Number(confluenceAI.score != null ? (score / 10) : (finalScore.score ?? (gaugeScore / 10)));
+        const mtfConfluence = analysis.multi_timeframe?.confluence;
 
         this.setText('chartTitle', `${analysis.symbol} · Binance · ${analysis.timeframe}`);
         this.setText('currentPrice', this.formatPrice(analysis.current_price));
         this.setText('priceChange', `${Number(ticker.priceChangePercent || analysis.price_change || 0).toFixed(2)}%`);
-        this.setText('operationalScore', `${score}/100`);
-        this.setText('scoreValue', Math.round(score));
-        this.setText('scoreText', score > 70 ? 'Alta qualidade' : score > 50 ? 'Aguardando confirmacao' : 'Risco elevado');
-        this.updateGauge(score);
+        this.setText('operationalScore', `${Math.round(gaugeScore)}/100`);
+        this.setText('scoreValue', finalScore10.toFixed(1));
+        this.setText('finalScoreValue', finalScore10.toFixed(1));
+        this.setText('scoreText', confluenceAI.classification || finalScore.classification || (gaugeScore > 70 ? 'Alta qualidade' : gaugeScore > 50 ? 'Aguardando confirmacao' : 'Risco elevado'));
+        this.updateGauge(gaugeScore);
 
-        this.setText('mainSignal', this.getSignalText(signal.signal_type));
-        this.setText('confidenceValue', `${Math.round(signal.confidence)}%`);
+        this.setText('mainSignal', confluenceAI.signal || finalScore.signal || this.getSignalText(signal.signal_type));
+        this.setText('confidenceValue', `${Math.round(confluenceAI.confidence ?? finalScore.confidence ?? signal.confidence ?? 0)}%`);
+        this.setText('entryAggressive', confluenceAI.entry_aggressive ? this.formatPrice(confluenceAI.entry_aggressive) : (finalScore.entry_aggressive ? 'SIM' : 'NAO'));
+        this.setText('entryConservative', confluenceAI.entry_conservative ? this.formatPrice(confluenceAI.entry_conservative) : (finalScore.entry_conservative ? 'SIM' : 'NAO'));
+        this.setText('riskDisclaimer', analysis.disclaimer || confluenceAI.disclaimer || document.getElementById('riskDisclaimer')?.textContent || '');
+        if (mtfConfluence) {
+            this.setText(
+                'mtfConfluence',
+                `${mtfConfluence.dominant_direction} ${mtfConfluence.confirmed_timeframes}/${mtfConfluence.required_confirmations} · ${mtfConfluence.average_strength}%`
+            );
+        }
 
-        this.setText('levelEntrada', this.formatPrice(analysis.levels.entrada));
-        this.setText('levelStop', this.formatPrice(analysis.levels.stop_loss));
-        this.setText('levelTarget1', this.formatPrice(analysis.levels.alvo_1));
-        this.setText('levelTarget2', this.formatPrice(analysis.levels.alvo_2));
-        this.setText('riskRatio', `1:${analysis.levels.risco_retorno.toFixed(2)}`);
+        const levels = analysis.levels || {};
+        this.setText('levelEntrada', this.formatPrice(levels.entrada));
+        this.setText('levelStop', this.formatPrice(levels.stop_loss));
+        this.setText('levelTarget1', this.formatPrice(levels.alvo_1));
+        this.setText('levelTarget2', this.formatPrice(levels.alvo_2));
+        this.setText('riskRatio', Number.isFinite(Number(levels.risco_retorno)) ? `1:${Number(levels.risco_retorno).toFixed(2)}` : '--');
 
-        this.setText('rsiValue', indicators.rsi.toFixed(2));
-        this.setText('macdValue', indicators.macd.toFixed(4));
-        this.setText('atrValue', indicators.atr.toFixed(2));
+        this.setText('rsiValue', this.formatNumber(indicators.rsi, 2));
+        this.setText('macdValue', this.formatNumber(indicators.macd, 4));
+        this.setText('atrValue', this.formatNumber(indicators.atr, 2));
         this.setText('volumeValue', this.formatCompact(indicators.volume));
         this.setText('vwapValue', this.formatPrice(indicators.vwap));
         this.setText('emaValue', `${this.formatPrice(indicators.ema9)} / ${this.formatPrice(indicators.ema21)}`);
         this.setText('bbValue', `${this.formatPrice(indicators.bollinger_lower)} - ${this.formatPrice(indicators.bollinger_upper)}`);
 
-        this.updateReasoning(analysis.reasoning);
-        this.updateSupportResistance(analysis.support_resistance, analysis.current_price);
-        this.updateCandleReading(analysis.candle_reading);
+        this.updateReasoning(confluenceAI.confirmations || finalScore.technical_reasons || analysis.reasoning || []);
+        this.updateInvalidations(confluenceAI.invalidations || finalScore.invalidation_reasons || []);
+        this.updateSupportResistance(Array.isArray(analysis.support_resistance) ? analysis.support_resistance : [], analysis.current_price || 0);
+        this.updateCandleReading(Array.isArray(analysis.candle_reading) ? analysis.candle_reading : []);
+        this.updateInstitutionalPanels(analysis);
+    }
+
+    updateInstitutionalPanels(analysis) {
+        const smc = analysis.smc || {};
+        const structure = smc.structure || {};
+        const validation = analysis.validation || {};
+        const quality = validation.entry_quality || {};
+        const scenario = analysis.scenario || {};
+
+        this.setText('entryQuality', quality.quality || '--');
+        this.setText('probabilityScore', quality.probability ? `${quality.probability}%` : '--');
+        this.setText('scenarioAction', scenario.action || '--');
+        this.setText('invalidatedState', quality.invalidated ? 'SIM' : 'NAO');
+        this.setText('smcBos', structure.bos || '--');
+        this.setText('smcChoch', structure.choch || '--');
+        this.setText('smcLiquidityZone', this.formatSmartMoneyZone(smc.liquidity_zone));
+        this.setText('smcNearestOb', this.formatSmartMoneyZone(smc.nearest_order_block));
+        this.setText('smcRelevantFvg', this.formatSmartMoneyZone(smc.relevant_fvg));
+        this.setText('smcConfirmed', smc.confirmed ? 'SIM' : 'NAO');
+        this.setText('smcInvalidated', smc.invalidated ? 'SIM' : 'NAO');
+        this.setText('smcSweep', smc.liquidity_sweep?.detected ? smc.liquidity_sweep.side : 'NAO');
+        this.setText('lateralState', validation.lateralization?.detected ? 'SIM' : 'NAO');
+        this.updateVolumeInstitutionalPanel(analysis.volume_analysis || {});
+        this.setOperationalState(analysis.operational_state || {});
+    }
+
+    setOperationalState(state) {
+        const previousState = this.operationalState;
+        const currentState = state.state || 'waiting_confirmation';
+        const messages = {
+            loading: 'Carregando candles e recalculando a IA...',
+            neutral: 'Cenario neutro / sem entrada no momento.',
+            waiting_confirmation: 'Aguardar confirmacao.',
+            invalidated: 'Cenario invalidado por fator tecnico forte.',
+            confirmed: 'Sinal confirmado.',
+        };
+        const message = state.message || messages[currentState] || messages.waiting_confirmation;
+
+        this.setText('scenarioAction', message);
+        this.setText('invalidatedState', currentState === 'invalidated' ? 'SIM' : 'NAO');
+
+        const scoreText = document.getElementById('scoreText');
+        if (scoreText) {
+            scoreText.textContent = message;
+            scoreText.className = `score-text state-${currentState}`;
+        }
+
+        const mainSignal = document.getElementById('mainSignal');
+        if (mainSignal) {
+            mainSignal.dataset.state = currentState;
+        }
+
+        this.operationalState = currentState;
+
+        if (currentState === 'invalidated') {
+            const reasons = state.invalidation_reasons || [];
+            const signature = reasons.join('|') || message;
+            const now = Date.now();
+            const shouldToast = previousState !== 'loading'
+                && (this.lastInvalidationToast.signature !== signature || now - this.lastInvalidationToast.time > 60000);
+            if (shouldToast) {
+                this.lastInvalidationToast = { signature, time: now };
+                this.showNotification(reasons[0] || message, 'error');
+            }
+        }
+    }
+
+    updateVolumeInstitutionalPanel(volume) {
+        this.setText('volumeSignal', volume.signal || '--');
+        this.setText('volumeDominantSide', volume.dominant_side || '--');
+        this.setText('volumeAboveAverage', volume.volume_above_average ? 'SIM' : 'NAO');
+        this.setText('volumeAbnormal', volume.abnormal_volume ? 'SIM' : 'NAO');
+        this.setText('volumeExhaustion', volume.exhaustion?.detected ? volume.exhaustion.side : 'NAO');
+        this.setText('volumeAbsorption', volume.absorption?.detected ? volume.absorption.side : 'NAO');
+        this.setText('volumeBreakout', volume.breakout_confirmation?.confirmed ? volume.breakout_confirmation.direction : 'NAO');
+        this.setText('volumeDivergence', volume.price_volume_divergence?.detected ? volume.price_volume_divergence.type : 'NAO');
+    }
+
+    formatSmartMoneyZone(zone) {
+        if (!zone) return '--';
+        const label = zone.kind || zone.type || 'zona';
+        const value = zone.mid || zone.price || zone.high || zone.low;
+        return `${label} ${this.formatPrice(value)}`;
     }
 
     updateGauge(score) {
@@ -284,10 +590,24 @@ class AdvancedDashboard {
         const list = document.getElementById('reasoningList');
         if (!list) return;
         list.innerHTML = '';
-        reasoning.forEach((text) => {
+        const items = reasoning.length ? reasoning : ['Sem motivo tecnico dominante.'];
+        items.forEach((text) => {
             const item = document.createElement('div');
             item.className = 'reasoning-item';
             item.innerHTML = `<i class="fas fa-check-circle"></i><span>${text}</span>`;
+            list.appendChild(item);
+        });
+    }
+
+    updateInvalidations(invalidations) {
+        const list = document.getElementById('invalidationList');
+        if (!list) return;
+        list.innerHTML = '';
+        const items = invalidations.length ? invalidations : ['Sem invalidacao critica.'];
+        items.forEach((text) => {
+            const item = document.createElement('div');
+            item.className = 'reasoning-item';
+            item.innerHTML = `<i class="fas fa-times-circle"></i><span>${text}</span>`;
             list.appendChild(item);
         });
     }
@@ -330,8 +650,14 @@ class AdvancedDashboard {
         const data = await response.json();
         if (!data.success) return;
         Object.entries(data.analysis).forEach(([timeframe, item]) => {
-            this.setText(`tf${timeframe.replace(/\W/g, '')}`, this.getSignalText(item.signal, true));
+            this.setText(`tf${timeframe.replace(/\W/g, '')}`, `${this.getDirectionText(item.direction)} ${item.strength}%`);
         });
+        if (data.confluence) {
+            this.setText(
+                'mtfConfluence',
+                `${data.confluence.dominant_direction} ${data.confluence.confirmed_timeframes}/${data.confluence.required_confirmations} · ${data.confluence.average_strength}%`
+            );
+        }
     }
 
     async updateHeatmap() {
@@ -351,11 +677,12 @@ class AdvancedDashboard {
             row.className = 'heatmap-row';
             row.innerHTML = `<div class="heatmap-asset">${asset}</div>`;
             Object.entries(timeframes).forEach(([tf, item]) => {
+                if (tf === 'confluence') return;
                 const cell = document.createElement('button');
                 cell.className = 'heatmap-cell';
                 cell.style.backgroundColor = item.color;
-                cell.innerHTML = `<span>${tf}</span><strong>${item.confidence}%</strong>`;
-                cell.title = `${asset} ${tf} · ${item.signal}`;
+                cell.innerHTML = `<span>${tf}</span><strong>${this.getDirectionText(item.direction)}</strong><small>${item.strength}%</small>`;
+                cell.title = `${asset} ${tf} · ${item.trend} · ${item.signal}`;
                 cell.addEventListener('click', () => {
                     this.currentAsset = asset;
                     this.currentTimeframe = tf;
@@ -367,6 +694,11 @@ class AdvancedDashboard {
                 });
                 row.appendChild(cell);
             });
+            const confluence = timeframes.confluence || {};
+            const confluenceCell = document.createElement('div');
+            confluenceCell.className = 'heatmap-confluence';
+            confluenceCell.textContent = `${confluence.dominant_direction || '--'} ${confluence.confirmed_timeframes || 0}/${confluence.required_confirmations || 3}`;
+            row.appendChild(confluenceCell);
             container.appendChild(row);
         });
     }
@@ -378,7 +710,7 @@ class AdvancedDashboard {
             button.disabled = true;
         }
         try {
-            const response = await fetch(`/api/backtest/${this.currentAsset}`);
+            const response = await fetch(`/api/backtest/${this.currentAsset}?timeframe=${this.currentTimeframe}`);
             const data = await response.json();
             if (!data.success) throw new Error(data.error || 'Erro no backtest');
             const result = data.backtest;
@@ -386,6 +718,9 @@ class AdvancedDashboard {
             this.setText('winRate', `${result.win_rate.toFixed(1)}%`);
             this.setText('totalReturn', `${result.total_return.toFixed(2)}%`);
             this.setText('profitFactor', Number(result.profit_factor).toFixed(2));
+            this.setText('maxDrawdown', `${result.max_drawdown.toFixed(2)}%`);
+            this.setText('patternLearning', result.pattern_learning?.bias || '--');
+            this.renderEquityCurve(result.equity_curve || []);
             this.showNotification('Backtest atualizado com dados reais da Binance.', 'success');
         } catch (error) {
             this.showNotification(error.message, 'error');
@@ -395,6 +730,88 @@ class AdvancedDashboard {
                 button.disabled = false;
             }
         }
+    }
+
+    renderEquityCurve(points) {
+        const container = document.getElementById('equityCurve');
+        if (!container || !window.LightweightCharts) return;
+        if (!this.equityChart) {
+            this.equityChart = LightweightCharts.createChart(container, {
+                width: container.clientWidth,
+                height: 150,
+                layout: { background: { type: 'solid', color: '#05070d' }, textColor: '#94a3b8' },
+                grid: { horzLines: { color: 'rgba(148,163,184,.08)' }, vertLines: { color: 'rgba(148,163,184,.05)' } },
+                rightPriceScale: { borderVisible: false },
+                timeScale: { borderVisible: false, timeVisible: true },
+            });
+            this.equitySeries = this.equityChart.addAreaSeries({
+                topColor: 'rgba(56, 189, 248, 0.35)',
+                bottomColor: 'rgba(56, 189, 248, 0.02)',
+                lineColor: '#38bdf8',
+                lineWidth: 2,
+            });
+        }
+        this.equityChart.applyOptions({ width: container.clientWidth });
+        this.equitySeries.setData(points.map((point) => ({ time: point.time, value: point.value })));
+        this.equityChart.timeScale().fitContent();
+    }
+
+    async loadWatchlist() {
+        const response = await fetch('/api/watchlist');
+        const data = await response.json();
+        if (!data.success) return;
+        const container = document.getElementById('watchlist');
+        if (!container) return;
+        container.innerHTML = '';
+        data.watchlist.forEach((symbol) => {
+            const row = document.createElement('button');
+            row.className = 'watch-row';
+            row.innerHTML = `<strong>${symbol}</strong><span>Abrir</span>`;
+            row.addEventListener('click', () => {
+                this.currentAsset = symbol;
+                document.getElementById('assetSelect').value = symbol;
+                this.updateDashboard(true);
+            });
+            container.appendChild(row);
+        });
+    }
+
+    async addCurrentToWatchlist() {
+        await fetch('/api/watchlist', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ symbol: this.currentAsset }),
+        });
+        await this.loadWatchlist();
+    }
+
+    async loadAlerts() {
+        const response = await fetch('/api/alerts');
+        const data = await response.json();
+        if (!data.success) return;
+        this.alerts = data.alerts || [];
+        const container = document.getElementById('alertsList');
+        if (!container) return;
+        container.innerHTML = '';
+        data.alerts.slice(0, 12).forEach((alert) => {
+            const row = document.createElement('div');
+            row.className = 'alert-row';
+            row.innerHTML = `<span>${alert.symbol} ${alert.condition_type}</span><strong>${this.formatPrice(alert.target)}</strong>`;
+            container.appendChild(row);
+        });
+    }
+
+    async createPriceAlert() {
+        const current = document.getElementById('currentPrice')?.textContent.replace(/[^0-9.]/g, '');
+        const target = Number(current || 0);
+        if (!target) return;
+        await fetch('/api/alerts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ symbol: this.currentAsset, condition_type: 'price_cross', target }),
+        });
+        await this.loadAlerts();
+        this.showNotification('Alerta local criado.', 'success');
     }
 
     setConnectionState(text) {
@@ -419,6 +836,15 @@ class AdvancedDashboard {
         return map[signal] || signal;
     }
 
+    getDirectionText(direction) {
+        const map = {
+            BULLISH: 'BUY',
+            BEARISH: 'SELL',
+            NEUTRAL: 'NEUTRO',
+        };
+        return map[direction] || direction || '--';
+    }
+
     formatPrice(price) {
         const value = Number(price);
         if (!Number.isFinite(value)) return '--';
@@ -436,6 +862,11 @@ class AdvancedDashboard {
             notation: 'compact',
             maximumFractionDigits: 2,
         }).format(Number(value || 0));
+    }
+
+    formatNumber(value, digits = 2) {
+        const number = Number(value);
+        return Number.isFinite(number) ? number.toFixed(digits) : '--';
     }
 
     showNotification(message, type = 'info') {

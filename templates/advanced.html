@@ -2,6 +2,9 @@
 
 {% block content %}
 <div class="professional-dashboard">
+    <div class="risk-disclaimer" id="riskDisclaimer">
+        Esta analise e educativa e nao constitui recomendacao financeira. O sistema nao garante lucro. Toda operacao envolve risco.
+    </div>
     <div class="top-controls">
         <div class="controls-left">
             <div class="asset-timeframe-selector">
@@ -45,6 +48,10 @@
                     <span class="label">Atualizado</span>
                     <span class="value" id="lastUpdate">--</span>
                 </div>
+                <div class="info-item">
+                    <span class="label">Trades/s</span>
+                    <span class="value" id="tradeSpeed">--</span>
+                </div>
             </div>
         </div>
     </div>
@@ -74,6 +81,7 @@
                         <div class="score-number" id="scoreValue">--</div>
                     </div>
                     <div class="score-text" id="scoreText">Aguardando mercado</div>
+                    <div class="signal-confidence">Score final: <span id="finalScoreValue">--</span>/10</div>
                 </div>
             </div>
 
@@ -82,6 +90,10 @@
                 <div class="signal-type" id="mainSignal">NEUTRO</div>
                 <div class="signal-confidence">
                     <span>Confianca: <span id="confidenceValue">--</span></span>
+                </div>
+                <div class="validation-stack signal-mode-stack">
+                    <div><span>Agressiva</span><strong id="entryAggressive">--</strong></div>
+                    <div><span>Conservadora</span><strong id="entryConservative">--</strong></div>
                 </div>
             </div>
 
@@ -112,6 +124,10 @@
                 <div class="card-title">Heatmap Multi-Timeframe</div>
                 <div class="multi-tf-grid">
                     <div class="tf-analysis">
+                        <span class="tf-label">5m</span>
+                        <span class="tf-signal" id="tf5m">--</span>
+                    </div>
+                    <div class="tf-analysis">
                         <span class="tf-label">15m</span>
                         <span class="tf-signal" id="tf15m">--</span>
                     </div>
@@ -127,6 +143,19 @@
                         <span class="tf-label">1d</span>
                         <span class="tf-signal" id="tf1d">--</span>
                     </div>
+                </div>
+                <div class="risk-ratio mtf-confluence">
+                    Confluencia: <span id="mtfConfluence">--</span>
+                </div>
+            </div>
+
+            <div class="analysis-card">
+                <div class="card-title">Validacao Operacional</div>
+                <div class="validation-stack">
+                    <div><span>Qualidade</span><strong id="entryQuality">--</strong></div>
+                    <div><span>Probabilidade</span><strong id="probabilityScore">--</strong></div>
+                    <div><span>Cenario</span><strong id="scenarioAction">--</strong></div>
+                    <div><span>Invalidacao</span><strong id="invalidatedState">--</strong></div>
                 </div>
             </div>
         </div>
@@ -144,6 +173,7 @@
                     <span>Aguardando dados reais da Binance...</span>
                 </div>
             </div>
+            <div class="reasoning-list invalidation-list" id="invalidationList"></div>
         </div>
 
         <div class="detailed-card">
@@ -211,6 +241,65 @@
                 <div class="heatmap-grid"></div>
             </div>
         </div>
+
+        <div class="detailed-card">
+            <div class="card-header-detailed">
+                <h3>Smart Money Concepts</h3>
+                <span class="badge-ai">SMC</span>
+            </div>
+            <div class="smc-grid">
+                <div><span>BOS</span><strong id="smcBos">--</strong></div>
+                <div><span>CHOCH</span><strong id="smcChoch">--</strong></div>
+                <div><span>Zona Liquidez</span><strong id="smcLiquidityZone">--</strong></div>
+                <div><span>Order Block Prox.</span><strong id="smcNearestOb">--</strong></div>
+                <div><span>FVG Relevante</span><strong id="smcRelevantFvg">--</strong></div>
+                <div><span>Confirmacao</span><strong id="smcConfirmed">--</strong></div>
+                <div><span>Invalidacao</span><strong id="smcInvalidated">--</strong></div>
+                <div><span>Sweep</span><strong id="smcSweep">--</strong></div>
+                <div><span>Lateralizacao</span><strong id="lateralState">--</strong></div>
+            </div>
+        </div>
+
+        <div class="detailed-card">
+            <div class="card-header-detailed">
+                <h3>Volume Institucional</h3>
+                <span class="badge-ai">Flow</span>
+            </div>
+            <div class="smc-grid">
+                <div><span>Sinal Volume</span><strong id="volumeSignal">--</strong></div>
+                <div><span>Lado Dominante</span><strong id="volumeDominantSide">--</strong></div>
+                <div><span>Acima Media</span><strong id="volumeAboveAverage">--</strong></div>
+                <div><span>Anormal</span><strong id="volumeAbnormal">--</strong></div>
+                <div><span>Exaustao</span><strong id="volumeExhaustion">--</strong></div>
+                <div><span>Absorcao</span><strong id="volumeAbsorption">--</strong></div>
+                <div><span>Rompimento</span><strong id="volumeBreakout">--</strong></div>
+                <div><span>Divergencia</span><strong id="volumeDivergence">--</strong></div>
+            </div>
+        </div>
+
+        <div class="detailed-card">
+            <div class="card-header-detailed">
+                <h3>Tape de Trades</h3>
+                <span class="badge-ai">WebSocket</span>
+            </div>
+            <div class="trade-tape" id="tradeTape"></div>
+        </div>
+
+        <div class="detailed-card">
+            <div class="card-header-detailed">
+                <h3>Watchlist</h3>
+                <button class="btn-run-backtest" id="btnAddWatch">Adicionar</button>
+            </div>
+            <div class="watchlist" id="watchlist"></div>
+        </div>
+
+        <div class="detailed-card">
+            <div class="card-header-detailed">
+                <h3>Alertas</h3>
+                <button class="btn-run-backtest" id="btnCreateAlert">Criar no preco</button>
+            </div>
+            <div class="alerts-list" id="alertsList"></div>
+        </div>
     </div>
 
     <div class="backtest-section">
@@ -236,7 +325,16 @@
                     <span class="result-label">Fator de Lucro</span>
                     <span class="result-value" id="profitFactor">--</span>
                 </div>
+                <div class="result-item">
+                    <span class="result-label">Max Drawdown</span>
+                    <span class="result-value" id="maxDrawdown">--</span>
+                </div>
+                <div class="result-item">
+                    <span class="result-label">Aprendizado</span>
+                    <span class="result-value" id="patternLearning">--</span>
+                </div>
             </div>
+            <div id="equityCurve" class="equity-curve"></div>
         </div>
     </div>
 </div>
