@@ -1743,3 +1743,291 @@
         min-height: 460px;
     }
 }
+
+/* ========================================
+   FINANCEAI PREMIUM INSTITUTIONAL SKIN
+   ======================================== */
+
+.page-content {
+    background:
+        linear-gradient(135deg, rgba(5, 7, 13, 0.94) 0%, rgba(7, 11, 20, 0.96) 48%, rgba(11, 16, 32, 0.94) 100%);
+}
+
+.professional-dashboard,
+.live-shell {
+    position: relative;
+    background:
+        radial-gradient(1100px 760px at 8% -14%, rgba(56, 189, 248, 0.13), transparent 62%),
+        radial-gradient(900px 620px at 96% 2%, rgba(245, 158, 11, 0.09), transparent 58%),
+        linear-gradient(135deg, #05070D 0%, #070B14 45%, #0B1020 100%);
+}
+
+.professional-dashboard::before,
+.live-shell::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background-image:
+        linear-gradient(rgba(255,255,255,0.026) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.022) 1px, transparent 1px);
+    background-size: 46px 46px;
+    mask-image: linear-gradient(to bottom, rgba(0,0,0,0.85), transparent 78%);
+}
+
+.top-controls,
+.live-toolbar,
+.replay-controls,
+.replay-actions,
+.chart-section-pro,
+.live-chart-panel,
+.analysis-card,
+.detailed-card,
+.backtest-section,
+.live-signals-panel,
+.live-status-card,
+.signal-pill {
+    background: linear-gradient(180deg, rgba(15, 23, 42, 0.84), rgba(8, 13, 22, 0.74));
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 22px 70px rgba(0, 0, 0, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    backdrop-filter: blur(18px);
+}
+
+.chart-section-pro,
+.live-chart-panel {
+    border-color: rgba(56, 189, 248, 0.23);
+    box-shadow: 0 28px 90px rgba(0, 0, 0, 0.48), 0 0 34px rgba(34, 211, 238, 0.08);
+}
+
+.analysis-card:hover,
+.detailed-card:hover,
+.live-signal-card:hover,
+.signal-pill:hover {
+    transform: translateY(-2px);
+    border-color: rgba(56, 189, 248, 0.34);
+    box-shadow: 0 28px 80px rgba(0, 0, 0, 0.44), 0 0 26px rgba(34, 211, 238, 0.12);
+}
+
+.top-controls,
+.live-toolbar,
+.replay-controls,
+.replay-actions {
+    border-color: rgba(56, 189, 248, 0.18);
+}
+
+.form-control-premium,
+.tf-btn,
+.chart-tool-btn,
+.chart-tool-link,
+.btn-run-backtest {
+    background: rgba(7, 11, 20, 0.72);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 10px;
+    color: #F8FAFC;
+}
+
+.form-control-premium:hover,
+.form-control-premium:focus,
+.tf-btn:hover,
+.tf-btn.active,
+.chart-tool-btn:hover,
+.chart-tool-link:hover,
+.btn-run-backtest:hover {
+    border-color: rgba(34, 211, 238, 0.44);
+    color: #38BDF8;
+    box-shadow: 0 0 22px rgba(34, 211, 238, 0.14);
+}
+
+.btn-run-backtest,
+.chart-tool-link {
+    background: linear-gradient(135deg, rgba(56, 189, 248, 0.18), rgba(245, 158, 11, 0.10));
+}
+
+.card-title,
+.card-header-detailed h3,
+.chart-header-pro h3 {
+    color: #F8FAFC;
+    letter-spacing: 0.05em;
+}
+
+.card-title::after,
+.card-header-detailed h3::after {
+    content: "";
+    display: block;
+    width: 38px;
+    height: 2px;
+    margin-top: 7px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #38BDF8, #F59E0B);
+}
+
+.info-item .label,
+.live-market-strip span,
+.live-metrics-grid span,
+.validation-stack span,
+.smc-grid span,
+.level-name,
+.ind-name {
+    color: #94A3B8;
+}
+
+.info-item .value,
+.level-price,
+.ind-value {
+    color: #38BDF8;
+    text-shadow: 0 0 16px rgba(56, 189, 248, 0.18);
+}
+
+.score-circle {
+    filter: drop-shadow(0 0 22px rgba(34, 211, 238, 0.16));
+}
+
+.score-number {
+    color: #F8FAFC;
+    text-shadow: 0 0 18px rgba(34, 211, 238, 0.28);
+}
+
+.signal-type,
+.live-status-card strong,
+.live-signal-direction,
+.badge-ai {
+    text-shadow: 0 0 18px currentColor;
+}
+
+.badge-ai {
+    background: rgba(56, 189, 248, 0.14);
+    border: 1px solid rgba(56, 189, 248, 0.26);
+    color: #38BDF8;
+}
+
+.risk-disclaimer {
+    border: 1px solid rgba(245, 158, 11, 0.32);
+    background: linear-gradient(90deg, rgba(245, 158, 11, 0.11), rgba(56, 189, 248, 0.05));
+    color: #FACC15;
+}
+
+.trading-chart,
+.live-chart,
+.equity-curve {
+    background: linear-gradient(180deg, rgba(5, 7, 13, 0.92), rgba(11, 16, 32, 0.88));
+    border: 1px solid rgba(56, 189, 248, 0.13);
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.live-message-row,
+.reasoning-item {
+    animation: aiPulseIn 0.28s ease both;
+}
+
+.live-status-card.is-loading strong::after,
+.score-text.state-loading::after {
+    content: "";
+    display: inline-block;
+    width: 1.8em;
+    text-align: left;
+    animation: aiDots 1.2s steps(4, end) infinite;
+}
+
+.live-status-card[data-state="BUY_CONFIRMED"],
+.live-status-card[data-state="AGGRESSIVE_ENTRY"],
+.live-signal-card.buy,
+.signal-buy {
+    box-shadow: 0 22px 70px rgba(0, 0, 0, 0.38), 0 0 26px rgba(34, 197, 94, 0.10);
+}
+
+.live-status-card[data-state="SELL_CONFIRMED"],
+.live-status-card[data-state="INVALIDATED"],
+.live-status-card[data-state="HIGH_RISK"],
+.live-signal-card.sell,
+.signal-sell {
+    box-shadow: 0 22px 70px rgba(0, 0, 0, 0.38), 0 0 26px rgba(239, 68, 68, 0.10);
+}
+
+.signal-wait,
+.live-status-card[data-state="WAITING_CONFIRMATION"],
+.live-status-card[data-state="WAIT_NEXT_CANDLE"] {
+    box-shadow: 0 22px 70px rgba(0, 0, 0, 0.38), 0 0 24px rgba(250, 204, 21, 0.10);
+}
+
+.live-signal-card {
+    transition: transform 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease;
+}
+
+.live-signal-card.buy .live-signal-direction {
+    color: #03120A;
+}
+
+.live-signal-card.sell .live-signal-direction {
+    color: #FFF7F7;
+}
+
+.live-empty-signal {
+    color: #94A3B8;
+    border-style: dashed;
+}
+
+.heatmap-cell {
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
+}
+
+.toast-notification {
+    border: 1px solid rgba(255,255,255,0.12);
+    box-shadow: 0 22px 70px rgba(0,0,0,0.44);
+    backdrop-filter: blur(18px);
+}
+
+@keyframes aiPulseIn {
+    from {
+        opacity: 0;
+        transform: translateY(6px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes aiDots {
+    0% { content: ""; }
+    25% { content: "."; }
+    50% { content: ".."; }
+    75%, 100% { content: "..."; }
+}
+
+@media (max-width: 1200px) {
+    .main-grid,
+    .live-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .chart-section-pro,
+    .live-chart-panel {
+        min-height: 560px;
+    }
+}
+
+@media (max-width: 860px) {
+    .top-controls,
+    .live-toolbar,
+    .replay-controls,
+    .replay-actions,
+    .asset-timeframe-selector {
+        grid-template-columns: 1fr;
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .info-display,
+    .live-market-strip,
+    .signal-strip,
+    .live-signals-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .voice-controls,
+    .live-signal-metrics,
+    .live-signal-levels {
+        grid-template-columns: 1fr;
+    }
+}

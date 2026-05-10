@@ -93,31 +93,31 @@ class LiveTradingDashboard {
             height: Math.max(container.clientHeight, 620),
             layout: {
                 background: { type: 'solid', color: '#05070d' },
-                textColor: '#cbd5e1',
+                textColor: '#F8FAFC',
                 fontFamily: 'Inter, Arial, sans-serif',
             },
             grid: {
-                horzLines: { color: 'rgba(148, 163, 184, 0.10)' },
-                vertLines: { color: 'rgba(148, 163, 184, 0.06)' },
+                horzLines: { color: 'rgba(56, 189, 248, 0.08)' },
+                vertLines: { color: 'rgba(255, 255, 255, 0.035)' },
             },
             crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
             rightPriceScale: {
-                borderColor: 'rgba(148, 163, 184, 0.25)',
+                borderColor: 'rgba(56, 189, 248, 0.18)',
                 scaleMargins: { top: 0.08, bottom: 0.24 },
             },
             timeScale: {
-                borderColor: 'rgba(148, 163, 184, 0.25)',
+                borderColor: 'rgba(56, 189, 248, 0.18)',
                 timeVisible: true,
                 secondsVisible: false,
             },
         });
         this.candleSeries = this.chart.addCandlestickSeries({
-            upColor: '#26a69a',
-            downColor: '#ef5350',
-            borderUpColor: '#26a69a',
-            borderDownColor: '#ef5350',
-            wickUpColor: '#26a69a',
-            wickDownColor: '#ef5350',
+            upColor: '#22C55E',
+            downColor: '#EF4444',
+            borderUpColor: '#22C55E',
+            borderDownColor: '#EF4444',
+            wickUpColor: '#22C55E',
+            wickDownColor: '#EF4444',
         });
         this.volumeSeries = this.chart.addHistogramSeries({
             priceFormat: { type: 'volume' },
@@ -403,10 +403,10 @@ class LiveTradingDashboard {
     renderPriceLines(data) {
         this.clearPriceLines();
         [
-            { price: data.entry_aggressive, title: 'Entrada', color: '#38bdf8' },
-            { price: data.entry_conservative, title: 'Entrada Cons.', color: '#a78bfa' },
-            { price: data.stop_loss, title: 'Stop', color: '#ef4444' },
-            { price: data.take_profit, title: 'Take', color: '#22c55e' },
+            { price: data.entry_aggressive, title: 'Entrada', color: '#38BDF8' },
+            { price: data.entry_conservative, title: 'Entrada Cons.', color: '#F59E0B' },
+            { price: data.stop_loss, title: 'Stop', color: '#EF4444' },
+            { price: data.take_profit, title: 'Take', color: '#22C55E' },
         ].forEach((line) => {
             if (!Number.isFinite(Number(line.price))) return;
             this.priceLines.push(this.candleSeries.createPriceLine({

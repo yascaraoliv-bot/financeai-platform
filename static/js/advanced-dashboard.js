@@ -102,28 +102,28 @@ class AdvancedDashboard {
             width: container.clientWidth,
             height: Math.max(container.clientHeight, 520),
             layout: {
-                textColor: '#b6c2d9',
-                background: { type: 'solid', color: '#0b0f1a' },
+                textColor: '#F8FAFC',
+                background: { type: 'solid', color: '#05070D' },
                 fontFamily: 'Inter, Arial, sans-serif',
             },
             grid: {
-                horzLines: { color: 'rgba(148, 163, 184, 0.10)' },
-                vertLines: { color: 'rgba(148, 163, 184, 0.06)' },
+                horzLines: { color: 'rgba(56, 189, 248, 0.08)' },
+                vertLines: { color: 'rgba(255, 255, 255, 0.035)' },
             },
             crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
             rightPriceScale: {
-                borderColor: 'rgba(148, 163, 184, 0.25)',
+                borderColor: 'rgba(56, 189, 248, 0.18)',
                 scaleMargins: { top: 0.08, bottom: 0.24 },
             },
             timeScale: {
-                borderColor: 'rgba(148, 163, 184, 0.25)',
+                borderColor: 'rgba(56, 189, 248, 0.18)',
                 timeVisible: true,
                 secondsVisible: false,
             },
             watermark: {
                 visible: true,
                 text: 'BINANCE REAL-TIME',
-                color: 'rgba(148, 163, 184, 0.12)',
+                color: 'rgba(56, 189, 248, 0.13)',
                 fontSize: 18,
                 horzAlign: 'right',
                 vertAlign: 'bottom',
@@ -131,12 +131,12 @@ class AdvancedDashboard {
         });
 
         this.candleSeries = this.chart.addCandlestickSeries({
-            upColor: '#26a69a',
-            downColor: '#ef5350',
-            borderUpColor: '#26a69a',
-            borderDownColor: '#ef5350',
-            wickUpColor: '#26a69a',
-            wickDownColor: '#ef5350',
+            upColor: '#22C55E',
+            downColor: '#EF4444',
+            borderUpColor: '#22C55E',
+            borderDownColor: '#EF4444',
+            wickUpColor: '#22C55E',
+            wickDownColor: '#EF4444',
         });
 
         this.volumeSeries = this.chart.addHistogramSeries({
@@ -146,10 +146,10 @@ class AdvancedDashboard {
         });
 
         this.overlaySeries = {
-            ema9: this.chart.addLineSeries({ color: '#facc15', lineWidth: 2, title: 'EMA 9' }),
-            ema21: this.chart.addLineSeries({ color: '#38bdf8', lineWidth: 2, title: 'EMA 21' }),
-            ema200: this.chart.addLineSeries({ color: '#f97316', lineWidth: 2, title: 'EMA 200' }),
-            vwap: this.chart.addLineSeries({ color: '#a78bfa', lineWidth: 2, title: 'VWAP' }),
+            ema9: this.chart.addLineSeries({ color: '#FACC15', lineWidth: 2, title: 'EMA 9' }),
+            ema21: this.chart.addLineSeries({ color: '#38BDF8', lineWidth: 2, title: 'EMA 21' }),
+            ema200: this.chart.addLineSeries({ color: '#F59E0B', lineWidth: 2, title: 'EMA 200' }),
+            vwap: this.chart.addLineSeries({ color: '#22D3EE', lineWidth: 2, title: 'VWAP' }),
             bollinger_upper: this.chart.addLineSeries({ color: 'rgba(148, 163, 184, 0.8)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dotted }),
             bollinger_middle: this.chart.addLineSeries({ color: 'rgba(148, 163, 184, 0.45)', lineWidth: 1 }),
             bollinger_lower: this.chart.addLineSeries({ color: 'rgba(148, 163, 184, 0.8)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dotted }),
@@ -469,10 +469,10 @@ class AdvancedDashboard {
 
     addTradePriceLines(levels) {
         const lines = [
-            { key: 'entrada', title: 'Entrada', color: '#38bdf8' },
-            { key: 'stop_loss', title: 'Stop', color: '#ef4444' },
-            { key: 'alvo_1', title: 'Take 1', color: '#22c55e' },
-            { key: 'alvo_2', title: 'Take 2', color: '#16a34a' },
+            { key: 'entrada', title: 'Entrada', color: '#38BDF8' },
+            { key: 'stop_loss', title: 'Stop', color: '#EF4444' },
+            { key: 'alvo_1', title: 'Take 1', color: '#22C55E' },
+            { key: 'alvo_2', title: 'Take 2', color: '#F59E0B' },
         ];
         lines.forEach((line) => {
             if (!Number.isFinite(levels[line.key])) return;

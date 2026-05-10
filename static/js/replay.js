@@ -23,12 +23,12 @@ class ReplayDashboard {
         this.chart = LightweightCharts.createChart(container, {
             width: container.clientWidth,
             height: Math.max(container.clientHeight, 620),
-            layout: { background: { type: 'solid', color: '#05070d' }, textColor: '#cbd5e1' },
-            grid: { horzLines: { color: 'rgba(148,163,184,.10)' }, vertLines: { color: 'rgba(148,163,184,.06)' } },
+            layout: { background: { type: 'solid', color: '#05070D' }, textColor: '#F8FAFC' },
+            grid: { horzLines: { color: 'rgba(56,189,248,.08)' }, vertLines: { color: 'rgba(255,255,255,.035)' } },
             timeScale: { timeVisible: true, secondsVisible: false },
         });
         this.candleSeries = this.chart.addCandlestickSeries({
-            upColor: '#26a69a', downColor: '#ef5350', borderUpColor: '#26a69a', borderDownColor: '#ef5350', wickUpColor: '#26a69a', wickDownColor: '#ef5350',
+            upColor: '#22C55E', downColor: '#EF4444', borderUpColor: '#22C55E', borderDownColor: '#EF4444', wickUpColor: '#22C55E', wickDownColor: '#EF4444',
         });
         this.volumeSeries = this.chart.addHistogramSeries({ priceFormat: { type: 'volume' }, priceScaleId: '', scaleMargins: { top: 0.82, bottom: 0 } });
         window.addEventListener('resize', () => this.chart.applyOptions({ width: container.clientWidth }));
