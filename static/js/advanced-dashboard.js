@@ -464,6 +464,7 @@ class AdvancedDashboard {
         const gaugeScore = confluenceAI.score != null ? score : Number(analysis.operational_score || 0);
         const finalScore10 = Number(confluenceAI.score != null ? (score / 10) : (finalScore.score ?? (gaugeScore / 10)));
         const mtfConfluence = analysis.multi_timeframe?.confluence;
+        const activeSignal = operationalSignal.signal || confluenceAI.signal || finalScore.signal || this.getSignalText(signal.signal_type);
 
         this.setText('chartTitle', `${analysis.symbol} · Binance · ${analysis.timeframe}`);
         this.setText('currentPrice', this.formatPrice(analysis.current_price));
@@ -474,7 +475,8 @@ class AdvancedDashboard {
         this.setText('scoreText', operationalSignal.status || confluenceAI.classification || finalScore.classification || (gaugeScore > 70 ? 'Alta qualidade' : gaugeScore > 50 ? 'Aguardando confirmacao' : 'Risco elevado'));
         this.updateGauge(gaugeScore);
 
-        this.setText('mainSignal', operationalSignal.signal || confluenceAI.signal || finalScore.signal || this.getSignalText(signal.signal_type));
+        this.setText('mainSignal', activeSignal);
+        this.setSignalVisualState(activeSignal, gaugeScore);
         this.setText('confidenceValue', `${Math.round(operationalSignal.confidence ?? confluenceAI.confidence ?? finalScore.confidence ?? signal.confidence ?? 0)}%`);
         this.setText('entryAggressive', operationalSignal.entry_aggressive ? this.formatPrice(operationalSignal.entry_aggressive) : 'NAO');
         this.setText('entryConservative', operationalSignal.entry_conservative ? this.formatPrice(operationalSignal.entry_conservative) : 'NAO');
@@ -508,6 +510,26 @@ class AdvancedDashboard {
         this.updateSupportResistance(Array.isArray(analysis.support_resistance) ? analysis.support_resistance : [], analysis.current_price || 0);
         this.updateCandleReading(Array.isArray(analysis.candle_reading) ? analysis.candle_reading : []);
         this.updateInstitutionalPanels(analysis);
+    }
+
+    setSignalVisualState(signal, score) {
+        const normalized = String(signal || 'NEUTRO').toUpperCase();
+        const scoreLabel = Number.isFinite(Number(score)) ? `${Math.round(Number(score))}%` : 'ATIVO';
+        const isBuy = normalized === 'COMPRA' || normalized === 'BUY';
+        const isSell = normalized === 'VENDA' || normalized === 'SELL';
+        const isNeutral = normalized === 'NEUTRO' || normalized === 'NEUTRAL';
+        const isWaiting = normalized.includes('AGUARDAR') || normalized.includes('WAIT');
+        const displaySignal = isBuy ? 'COMPRA' : isSell ? 'VENDA' : isWaiting ? 'AGUARDAR CONFIRMACAO' : 'NEUTRO';
+
+        const mainSignal = document.getElementById('mainSignal');
+        if (mainSignal) {
+            mainSignal.dataset.signal = displaySignal;
+        }
+
+        this.setText('buyCardState', isBuy ? scoreLabel : '--');
+        this.setText('sellCardState', isSell ? scoreLabel : '--');
+        this.setText('neutralCardState', isNeutral ? 'ATIVO' : '--');
+        this.setText('waitCardState', isWaiting ? 'ATIVO' : '--');
     }
 
     updateInstitutionalPanels(analysis) {
