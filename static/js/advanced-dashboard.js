@@ -458,8 +458,9 @@ class AdvancedDashboard {
         const indicators = signal.indicators || {};
         const ticker = analysis.ticker || candlesPayload.ticker || {};
         const confluenceAI = analysis.confluence_ai || {};
+        const operationalSignal = analysis.operational_signal || {};
         const finalScore = analysis.final_score || {};
-        const score = Number(confluenceAI.score ?? analysis.operational_score ?? 0);
+        const score = Number(operationalSignal.score ?? confluenceAI.score ?? analysis.operational_score ?? 0);
         const gaugeScore = confluenceAI.score != null ? score : Number(analysis.operational_score || 0);
         const finalScore10 = Number(confluenceAI.score != null ? (score / 10) : (finalScore.score ?? (gaugeScore / 10)));
         const mtfConfluence = analysis.multi_timeframe?.confluence;
@@ -470,14 +471,14 @@ class AdvancedDashboard {
         this.setText('operationalScore', `${Math.round(gaugeScore)}/100`);
         this.setText('scoreValue', finalScore10.toFixed(1));
         this.setText('finalScoreValue', finalScore10.toFixed(1));
-        this.setText('scoreText', confluenceAI.classification || finalScore.classification || (gaugeScore > 70 ? 'Alta qualidade' : gaugeScore > 50 ? 'Aguardando confirmacao' : 'Risco elevado'));
+        this.setText('scoreText', operationalSignal.status || confluenceAI.classification || finalScore.classification || (gaugeScore > 70 ? 'Alta qualidade' : gaugeScore > 50 ? 'Aguardando confirmacao' : 'Risco elevado'));
         this.updateGauge(gaugeScore);
 
-        this.setText('mainSignal', confluenceAI.signal || finalScore.signal || this.getSignalText(signal.signal_type));
-        this.setText('confidenceValue', `${Math.round(confluenceAI.confidence ?? finalScore.confidence ?? signal.confidence ?? 0)}%`);
-        this.setText('entryAggressive', confluenceAI.entry_aggressive ? this.formatPrice(confluenceAI.entry_aggressive) : (finalScore.entry_aggressive ? 'SIM' : 'NAO'));
-        this.setText('entryConservative', confluenceAI.entry_conservative ? this.formatPrice(confluenceAI.entry_conservative) : (finalScore.entry_conservative ? 'SIM' : 'NAO'));
-        this.setText('riskDisclaimer', analysis.disclaimer || confluenceAI.disclaimer || document.getElementById('riskDisclaimer')?.textContent || '');
+        this.setText('mainSignal', operationalSignal.signal || confluenceAI.signal || finalScore.signal || this.getSignalText(signal.signal_type));
+        this.setText('confidenceValue', `${Math.round(operationalSignal.confidence ?? confluenceAI.confidence ?? finalScore.confidence ?? signal.confidence ?? 0)}%`);
+        this.setText('entryAggressive', operationalSignal.entry_aggressive ? this.formatPrice(operationalSignal.entry_aggressive) : 'NAO');
+        this.setText('entryConservative', operationalSignal.entry_conservative ? this.formatPrice(operationalSignal.entry_conservative) : 'NAO');
+        this.setText('riskDisclaimer', operationalSignal.disclaimer || analysis.disclaimer || confluenceAI.disclaimer || document.getElementById('riskDisclaimer')?.textContent || '');
         if (mtfConfluence) {
             this.setText(
                 'mtfConfluence',
@@ -486,11 +487,13 @@ class AdvancedDashboard {
         }
 
         const levels = analysis.levels || {};
-        this.setText('levelEntrada', this.formatPrice(levels.entrada));
-        this.setText('levelStop', this.formatPrice(levels.stop_loss));
-        this.setText('levelTarget1', this.formatPrice(levels.alvo_1));
-        this.setText('levelTarget2', this.formatPrice(levels.alvo_2));
-        this.setText('riskRatio', Number.isFinite(Number(levels.risco_retorno)) ? `1:${Number(levels.risco_retorno).toFixed(2)}` : '--');
+        this.setText('levelEntrada', this.formatPrice(operationalSignal.entry_aggressive || levels.entrada));
+        this.setText('levelEntradaConservadora', this.formatPrice(operationalSignal.entry_conservative));
+        this.setText('levelStop', this.formatPrice(operationalSignal.stop_loss ?? levels.stop_loss));
+        this.setText('levelTarget1', this.formatPrice(operationalSignal.take_profit_1 ?? levels.alvo_1));
+        this.setText('levelTarget2', this.formatPrice(operationalSignal.take_profit_2 ?? levels.alvo_2));
+        this.setText('riskRatio', Number.isFinite(Number(operationalSignal.risk_reward ?? levels.risco_retorno)) ? `1:${Number(operationalSignal.risk_reward ?? levels.risco_retorno).toFixed(2)}` : '--');
+        this.setText('cancelScenario', operationalSignal.cancellation_scenario || '--');
 
         this.setText('rsiValue', this.formatNumber(indicators.rsi, 2));
         this.setText('macdValue', this.formatNumber(indicators.macd, 4));
@@ -500,8 +503,8 @@ class AdvancedDashboard {
         this.setText('emaValue', `${this.formatPrice(indicators.ema9)} / ${this.formatPrice(indicators.ema21)}`);
         this.setText('bbValue', `${this.formatPrice(indicators.bollinger_lower)} - ${this.formatPrice(indicators.bollinger_upper)}`);
 
-        this.updateReasoning(confluenceAI.confirmations || finalScore.technical_reasons || analysis.reasoning || []);
-        this.updateInvalidations(confluenceAI.invalidations || finalScore.invalidation_reasons || []);
+        this.updateReasoning(operationalSignal.confirmations || confluenceAI.confirmations || finalScore.technical_reasons || analysis.reasoning || []);
+        this.updateInvalidations(operationalSignal.invalidations || confluenceAI.invalidations || finalScore.invalidation_reasons || []);
         this.updateSupportResistance(Array.isArray(analysis.support_resistance) ? analysis.support_resistance : [], analysis.current_price || 0);
         this.updateCandleReading(Array.isArray(analysis.candle_reading) ? analysis.candle_reading : []);
         this.updateInstitutionalPanels(analysis);

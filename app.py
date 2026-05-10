@@ -18,6 +18,7 @@ from ia.confluence_engine import DISCLAIMER, build_confluence_analysis
 from ia.data_generator import generate_realistic_data
 from ia.final_score import calculate_final_score
 from ia.institutional import OperationalValidator, PatternLearner, ProfessionalBacktest
+from ia.operational_signal import build_operational_signal
 from ia.smart_money import analyze_smart_money
 from ia.technical_reader import read_technical
 from ia.volume_reader import read_volume
@@ -637,6 +638,15 @@ def get_analysis(symbol, timeframe):
             levels=levels,
             final_score=final_score,
         )
+        operational_signal = build_operational_signal(
+            confluence_ai=confluence_ai,
+            technical=technical_reading,
+            volume=volume_analysis,
+            smc=smc,
+            mtf_confluence=mtf_confluence,
+            levels=levels,
+            operational_state=operational_state,
+        )
 
         response = {
             "success": True,
@@ -660,6 +670,7 @@ def get_analysis(symbol, timeframe):
             "technical_reader": technical_reading,
             "final_score": final_score,
             "confluence_ai": confluence_ai,
+            "operational_signal": operational_signal,
             "disclaimer": DISCLAIMER,
             "operational_state": operational_state,
             "candle_reading": ta.read_latest_candles(5),
@@ -689,6 +700,7 @@ def get_analysis(symbol, timeframe):
             "validation": default_validation(),
             "technical_reader": default_technical(None),
             "final_score": default_final_score({}),
+            "operational_signal": {},
             "confluence_ai": build_confluence_analysis(default_technical(None), default_smc(), default_volume(), default_wyckoff(), {}, {}, default_final_score({})),
             "disclaimer": DISCLAIMER,
             "operational_state": {
